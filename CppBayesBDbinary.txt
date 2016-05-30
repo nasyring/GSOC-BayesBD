@@ -1,0 +1,664 @@
+library(BayesBD)
+library(Rcpp)
+
+BayesBD.binary = function (obs, ini.mean = 0.4, n.run = 10000, n.burn = 1000, 
+    J = 10, output.all = FALSE) 
+{
+    mu.fun <- function(theta) theta * 0 + ini.mean
+    mu = c(mu.fun(obs$theta.obs))
+    L = 2 * J + 1
+    alpha.tau = 500
+    beta.tau = 1
+    alpha.lambda = 2
+    beta.lambda = 1
+    obs$demean = obs$r.obs - mu
+    obs$idxOne = which(obs$intensity == 1)
+    tmp.mat = sapply(1:L, function(k) eigen.fun(k)(c(obs$theta.obs)))
+    an.smp = matrix(NA, L, n.run)
+    pi.smp = matrix(NA, 2, n.run)
+    tau.smp = rep(NA, n.run)
+    lambda.smp = rep(NA, n.run)
+    an.ini = rep(0, L)
+    pi.in.ini = sum((obs$r.obs < mu) * obs$intensity)/sum(obs$r.obs < 
+        mu)
+    pi.out.ini = sum((obs$r.obs > mu) * obs$intensity)/sum(obs$r.obs > 
+        mu)
+    tau.ini = 500
+    lambda.ini = 1
+    cn.ini = sapply(0:J, function(ith) 2 * pi * exp(-2 * lambda.ini) * 
+        besselI(2 * lambda.ini, ith))
+    eigen.cn.ini = rep(cn.ini, each = 2)[-1]
+    alpha.ini = log(pi.in.ini * (1 - pi.out.ini)/(pi.out.ini * 
+        (1 - pi.in.ini)))
+    beta.ini = log((1 - pi.in.ini)/(1 - pi.out.ini))
+    diff.ini = obs$demean - c(tmp.mat %*% an.ini)
+    tmp = (diff.ini < 0)
+    n.in <- sum(tmp)
+    n.in.one <- sum(tmp[obs$idxOne])
+    logL.an.k <- function(k, an, alpha, beta, eigen.cn, tau, 
+        diff, tmp.mat) {
+        eigen.cn.k = eigen.cn[k]
+        an.k = an[k]
+        tmp.mat.k = c(tmp.mat[, k])
+        ret = function(an.k.candidate) {
+            diff.new = diff - (an.k.candidate - an.k) * tmp.mat.k
+            tmp = (diff.new <= 0)
+            n.in <- sum(tmp)
+            n.in.one <- sum(tmp[obs$idxOne])
+            ret2 = n.in.one * alpha + n.in * beta - an.k.candidate^2/eigen.cn.k * 
+                tau/2
+            attr(ret2, "diff") <- diff.new
+            attr(ret2, "n.in") <- n.in
+            attr(ret2, "n.in.one") <- n.in.one
+            return(ret2)
+        }
+        return(ret)
+    }
+    logL.lambda = function(tau, an) {
+        ret = function(lambda) {
+            cn = sapply(0:J, function(ith) 2 * pi * exp(-2 * 
+                lambda) * besselI(2 * lambda, ith))
+            eigen.cn = rep(cn, each = 2)[-1]
+            ret2 = -1/2 * (sum(log(eigen.cn)) + tau * sum(an^2/eigen.cn)) + 
+                (alpha.lambda - 1) * log(lambda) - beta.lambda * 
+                lambda
+            return(ret2)
+        }
+        return(ret)
+    }
+    start <- proc.time()
+    for (ith in 1:n.run) {
+        for (k in 1:L) {
+            f.tmp = logL.an.k(k, an.ini, alpha.ini, beta.ini, 
+                eigen.cn.ini, tau.ini, diff.ini, tmp.mat)
+            tmp2delete <- uni.slice(an.ini[k], g = f.tmp, gx0 = n.in.one * 
+                alpha.ini + n.in * beta.ini - an.ini[k]^2/eigen.cn.ini[k] * 
+                tau.ini/2)
+            tmp2delete.2 = attr(tmp2delete, "log.density")
+            diff.ini = attr(tmp2delete.2, "diff")
+            n.in = attr(tmp2delete.2, "n.in")
+            n.in.one = attr(tmp2delete.2, "n.in.one")
+            an.ini[k] <- tmp2delete
+        }
+        a.star = alpha.tau + L/2
+        b.star = beta.tau + sum(an.ini^2/eigen.cn.ini)/2
+        tau.ini = rgamma(1, shape = a.star, rate = b.star)
+        r.mat = c(tmp.mat %*% an.ini + mu)
+        tmp <- (obs$r.obs <= r.mat)
+        n.in <- sum(tmp)
+        n.in.one <- sum(tmp * obs$intensity)
+        n.out = length(r.mat) - n.in
+        n.out.one = sum(obs$intensity) - n.in.one
+        x1 = rbeta(1, n.in.one, n.in - n.in.one)
+        x2 = rbeta(1, n.out.one, n.out - n.out.one)
+        pi.in.ini = max(x1, x2)
+        pi.out.ini = min(x1, x2)
+        alpha.ini = log(pi.in.ini * (1 - pi.out.ini)/(pi.out.ini * 
+            (1 - pi.in.ini)))
+        beta.ini = log((1 - pi.in.ini)/(1 - pi.out.ini))
+        lambda.ini = uni.slice(lambda.ini, g = logL.lambda(tau = tau.ini, 
+            an = an.ini), lower = 0, upper = 500)
+        an.smp[, ith] = an.ini
+        pi.smp[, ith] = c(pi.in.ini, pi.out.ini)
+        lambda.smp[ith] = lambda.ini
+        tau.smp[ith] = tau.ini
+        if (ith%%floor(n.run/100) == 1) {
+            duration = proc.time() - start
+            cat(ith, "th iteration:", "ETA:", duration[3]/ith * 
+                (n.run - ith), "\n")
+        }
+    }
+    Total.Time = proc.time() - start
+    an.MC = apply(an.smp[, n.burn:n.run], 1, mean)
+    gamma.MC <- function(theta.arg) {
+        c(sapply(1:L, function(k) eigen.fun(k)(theta.arg)) %*% 
+            an.MC + mu.fun(theta.arg))
+    }
+    result = list(gamma.hat = gamma.MC)
+    if (output.all) {
+        result = list(an.smp = an.smp, pi.smp = pi.smp, tau.smp = tau.smp, 
+            lambda.smp = lambda.smp, gamma.hat = gamma.MC)
+    }
+    return(result)
+}
+
+
+cppFunction('Rcpp::List unislice2(Rcpp::NumericVector x0,Rcpp::NumericVector diff,Rcpp::NumericVector tmpmatk,Rcpp::NumericVector ank,Rcpp::NumericVector intensity,Rcpp::NumericVector g2,Rcpp::NumericVector g4,Rcpp::NumericVector g5,Rcpp::NumericVector g6,Rcpp::NumericVector gx0){
+RNGScope scope;
+double w = 1.0;
+int s = diff.size(); 
+Rcpp::NumericVector m = Rcpp::NumericVector( Rcpp::Dimension(1));
+ m[0] = 100.0; 
+double d_m = 100.0;
+Rcpp::NumericVector lower = Rcpp::NumericVector( Rcpp::Dimension(1)); lower[0] = -100.0;
+Rcpp::NumericVector upper = Rcpp::NumericVector( Rcpp::Dimension(1)); upper[0] = 100.0;
+   Rcpp::NumericVector logy = Rcpp::NumericVector( Rcpp::Dimension(1)); logy = gx0 - rexp(1);
+ Rcpp::NumericVector x1 = Rcpp::NumericVector( Rcpp::Dimension(1)); x1[0]=0.0;
+ Rcpp::NumericVector gx1 = Rcpp::NumericVector( Rcpp::Dimension(1)); gx1[0]=0.0;
+ Rcpp::NumericVector gxF = Rcpp::NumericVector( Rcpp::Dimension(1)); gxF[0]=0.0;
+   Rcpp::NumericVector u = Rcpp::NumericVector( Rcpp::Dimension(1)); u = runif(1, 0, w);
+    Rcpp::NumericVector L = Rcpp::NumericVector( Rcpp::Dimension(1)); L = x0 - u;
+    Rcpp::NumericVector R = Rcpp::NumericVector( Rcpp::Dimension(1)); R = x0 + (w - u);
+    Rcpp::NumericVector L2 = Rcpp::NumericVector( Rcpp::Dimension(1)); L2=L;
+    Rcpp::NumericVector R2 = Rcpp::NumericVector( Rcpp::Dimension(1)); R2=R;
+	Rcpp::NumericVector J = Rcpp::NumericVector( Rcpp::Dimension(1)); J = 0.0;
+	Rcpp::NumericVector K = Rcpp::NumericVector( Rcpp::Dimension(1)); K = 0.0;
+Rcpp::LogicalVector LL = Rcpp::LogicalVector( Rcpp::Dimension(1));
+Rcpp::LogicalVector RR = Rcpp::LogicalVector( Rcpp::Dimension(1));
+Rcpp::NumericVector ggL = Rcpp::NumericVector( Rcpp::Dimension(1)); ggL=0.0;
+Rcpp::NumericVector ggR = Rcpp::NumericVector( Rcpp::Dimension(1)); ggR=0.0;
+Rcpp::LogicalVector gg1 = Rcpp::LogicalVector( Rcpp::Dimension(1));
+Rcpp::LogicalVector gxy = Rcpp::LogicalVector( Rcpp::Dimension(1));
+Rcpp::LogicalVector x10 = Rcpp::LogicalVector( Rcpp::Dimension(1));
+Rcpp::NumericVector diffnew = Rcpp::NumericVector( Rcpp::Dimension(s));
+Rcpp::NumericVector count = Rcpp::NumericVector( Rcpp::Dimension(1)); count=0.0;
+bool res = TRUE;
+bool resL = FALSE;
+bool resR = FALSE;
+bool resg = FALSE;
+bool res1 = FALSE;
+
+		int g1 = 0;
+		int g3 = 0;
+	
+        J = floor(runif(1, 0.0, d_m));
+        K = (m - 1) - J;
+		count = 0.0;
+while( res ){
+            count = count+1;
+		res = is_true( all( count < J ) );
+		diffnew = diff - (L - ank) * tmpmatk;
+		g1 = 0; g3 = 0;
+		for(int i=0; i<s;i++){
+			if(diffnew[i]<=0){
+				g3 = g3+1;
+				if(intensity[i]==1){
+					g1 = g1+1;
+				}
+			}
+		}
+		 resL = (L[0]<=lower[0]);
+            if (resL){ 
+			L2[0] = L[0];
+			res= FALSE;}
+		ggL = g1*g2+g3*g4-((pow(L,2))/g5)*g6;
+		 resg = (ggL[0] <= logy[0]);
+            if (resg){ 
+			L2 = L;
+			res=FALSE;}
+            L = L - w;
+         }
+	resL = FALSE;
+	resg = FALSE;
+		count = 0.0;
+		res = TRUE;
+       while( res ){
+            count=count+1;
+		res = is_true( all( count < K ) );
+		diffnew = diff - (R - ank) * tmpmatk;
+		g1 = 0; g3 = 0;
+		for(int i=0; i<s;i++){
+			if(diffnew[i]<=0){
+				g3 = g3+1;
+				if(intensity[i]==1){
+					g1 = g1+1;
+				}
+			}
+		}
+		 resL = (R[0]>=upper[0]);
+            if (resL){ 
+               R2=R;
+			res = FALSE;}
+		ggR = g1*g2+g3*g4-((pow(R,2))/g5)*g6;
+		 resg = (ggR[0] <= logy[0]);
+            if (resg){ 
+                R2=R;
+			res = FALSE;}
+            R = R + w;
+            }
+
+	resL = (L2[0]<lower[0]);
+    if (resL) {
+        L2 = lower;
+    }
+	resR = (R2[0]>upper[0]);
+    if (resR) {
+        R2 = upper;
+    }
+	count = 0.0;
+	res = TRUE;
+    while(res) {
+		count=count+1;
+	res = is_true( all( count < 10 ) );
+		diffnew = diff - (x1 - ank) * tmpmatk;
+	     g1 =0; g3=0;
+              for(int i=0; i<s;i++){
+			if(diffnew[i]<=0){
+				g3 = g3+1;
+				if(intensity[i]==1){
+					g1 = g1+1;
+				}
+			}
+		}
+	double dL = L2[0];
+	double dR = R2[0];
+        x1 = runif(1, dL, dR);
+        gx1 = g1*g2+g3*g4-((pow(x1,2))/g5)*g6;
+	  resg = (gx1[0] >= logy[0]);
+        if (resg){ 
+            gxF=gx1;
+		res = FALSE;
+			}
+		res1 = (x1[0] > x0[0]);
+        if (res1) {
+            R2 = x1;
+        }
+        else {
+            L2 = x1;
+        }
+    }  
+  return Rcpp::List::create(Rcpp::Named("x1") = x1,Rcpp::Named("logdensity") = gxF,Rcpp::Named("diffnew") = diffnew,Rcpp::Named("nin") = g3,Rcpp::Named("ninone") =g1);
+
+
+}')
+
+
+cppFunction('Rcpp::List unisliceL(SEXP x0, SEXP gx0, int i_J, SEXP tauini, SEXP anini, SEXP alphalambda, SEXP betalambda, int lambdaini){
+RNGScope scope;
+Rcpp::Function eigenfun("eigenfun");
+Rcpp::Function besselI("besselI");
+double w = 1.0;
+Rcpp::NumericVector m = Rcpp::NumericVector( Rcpp::Dimension(1));
+ m[0] = 100.0; 
+double d_m = 100.0;
+Rcpp::NumericVector lower = Rcpp::NumericVector( Rcpp::Dimension(1)); lower[0] = 0.0;
+Rcpp::NumericVector upper = Rcpp::NumericVector( Rcpp::Dimension(1)); upper[0] = 500.0;
+   Rcpp::NumericVector logy = Rcpp::NumericVector( Rcpp::Dimension(1)); logy = Rcpp::as<NumericVector>(gx0) - rexp(1);
+   Rcpp::NumericVector u = Rcpp::NumericVector( Rcpp::Dimension(1)); u = runif(1, 0, w);
+    Rcpp::NumericVector L = Rcpp::NumericVector( Rcpp::Dimension(1)); L = lambdaini - u;
+    Rcpp::NumericVector R = Rcpp::NumericVector( Rcpp::Dimension(1)); R = lambdaini + (w - u);
+    Rcpp::NumericVector L2 = Rcpp::NumericVector( Rcpp::Dimension(1)); L2=L;
+    Rcpp::NumericVector R2 = Rcpp::NumericVector( Rcpp::Dimension(1)); R2=R;
+	Rcpp::NumericVector J = Rcpp::NumericVector( Rcpp::Dimension(1)); J = 0.0;
+	Rcpp::NumericVector K = Rcpp::NumericVector( Rcpp::Dimension(1)); K = 0.0;
+Rcpp::LogicalVector LL = Rcpp::LogicalVector( Rcpp::Dimension(1));
+Rcpp::LogicalVector RR = Rcpp::LogicalVector( Rcpp::Dimension(1));
+Rcpp::NumericVector ggL = Rcpp::NumericVector( Rcpp::Dimension(1)); ggL=0.0;
+Rcpp::NumericVector ggR = Rcpp::NumericVector( Rcpp::Dimension(1)); ggR=0.0;
+Rcpp::LogicalVector gg1 = Rcpp::LogicalVector( Rcpp::Dimension(1));
+Rcpp::LogicalVector gxy = Rcpp::LogicalVector( Rcpp::Dimension(1));
+Rcpp::NumericVector x1 = Rcpp::NumericVector( Rcpp::Dimension(1));
+Rcpp::NumericVector gx1 = Rcpp::NumericVector( Rcpp::Dimension(1));
+Rcpp::NumericVector gxF = Rcpp::NumericVector( Rcpp::Dimension(1));
+Rcpp::LogicalVector x10 = Rcpp::LogicalVector( Rcpp::Dimension(1));
+Rcpp::NumericVector count = Rcpp::NumericVector( Rcpp::Dimension(1)); count=0.0;
+Rcpp::NumericVector interim = Rcpp::NumericVector( Rcpp::Dimension(1));interim[0] = 0.0;
+Rcpp::NumericVector cnini = Rcpp::NumericVector( Rcpp::Dimension(i_J+1));
+Rcpp::NumericVector eigencnini = Rcpp::NumericVector( Rcpp::Dimension(2*i_J+1));
+Rcpp::NumericVector calc1 = Rcpp::NumericVector( Rcpp::Dimension(1));calc1[0] = 0.0;
+bool res = TRUE;
+NumericVector v_anini = Rcpp::as<NumericVector>(anini);
+NumericVector v_x0 = Rcpp::as<NumericVector>(x0);
+bool resL = FALSE;
+bool resR = FALSE;
+bool resg = FALSE;
+bool res1 = FALSE;
+
+
+	
+        J = floor(runif(1, 0.0, d_m));
+        K = (m - 1) - J;
+		count = 0.0;
+while( res ){
+		interim[0]=0.0;
+            count = count+1;
+		res = is_true( all( count < J ) );
+		calc1 = 2*M_PI*exp(-2*L);
+		for(int i=0; i<(i_J+1); i++){
+				cnini[i] = calc1[0]*Rcpp::as<double>(besselI(pmax(2*L,0),i));
+			}
+			eigencnini[0] = cnini[0];
+			for(int i=1; i<(i_J+1); i++){
+				eigencnini[2*i-1] = cnini[i];
+				eigencnini[2*i] = cnini[i];
+			}
+			for(int i=0; i<(2*i_J+1);i++){
+				interim[0] = interim[0] + (v_anini[i])*(v_anini[i])/eigencnini[i];
+			}
+			ggL = -1/2 * (sum(log(eigencnini)) + Rcpp::as<NumericVector>(tauini) * interim) + (Rcpp::as<NumericVector>(alphalambda) - 1) * log(L) - Rcpp::as<NumericVector>(betalambda) * L;
+		 resL = (L[0]<=lower[0]);
+            if (resL){ 
+			L2 = L;
+			res= FALSE;}
+		 resg = (ggL[0] <= logy[0]);
+            if (resg){ 
+			L2 = L;
+			res=FALSE;}
+            L = L - w;
+            }
+		count = 0.0;
+		res = TRUE;
+       while( res ){
+		interim[0]=0.0;
+            count = count+1;
+		res = is_true( all( count < K ) );
+		calc1 = 2*M_PI*exp(-2*R);
+		for(int i=0; i<(i_J+1); i++){
+				cnini[i] = calc1[0]*Rcpp::as<double>(besselI(pmax(2*R,0),i));
+			}
+			eigencnini[0] = cnini[0];
+			for(int i=1; i<(i_J+1); i++){
+				eigencnini[2*i-1] = cnini[i];
+				eigencnini[2*i] = cnini[i];
+			}
+			for(int i=0; i<(2*i_J+1);i++){
+				interim[0] = interim[0] + (v_anini[i])*(v_anini[i])/eigencnini[i];
+			}
+			ggR = -1/2 * (sum(log(eigencnini)) + Rcpp::as<NumericVector>(tauini) * interim) + (Rcpp::as<NumericVector>(alphalambda) - 1) * log(R) - Rcpp::as<NumericVector>(betalambda) * R;
+		 resR = (R[0]<=lower[0]);
+            if (resR){ 
+			R2 = R;
+			res= FALSE;}
+		 resg = (ggR[0] <= logy[0]);
+            if (resg){ 
+			R2 = R;
+			res=FALSE;}
+            R = R + w;
+            }
+		
+	resL = (L2[0]<lower[0]);
+    if (resL) {
+        L2 = lower;
+    }
+	resR = (R2[0]>upper[0]);
+    if (resR) {
+        R2 = upper;
+    }
+	count = 0.0;
+	res = TRUE;
+    while(res) {
+		interim[0]=0.0;
+		count=count+1;
+		res = is_true( all( count < 100 ) );
+      	  x1 = runif(1, L2[0], R2[0]);
+			calc1 = 2*M_PI*exp(-2*x1);
+			for(int i=0; i<(i_J+1); i++){
+				cnini[i] = calc1[0]*Rcpp::as<double>(besselI(pmax(2*R,0),i));
+			}
+			eigencnini[0] = cnini[0];
+			for(int i=1; i<(i_J+1); i++){
+				eigencnini[2*i-1] = cnini[i];
+				eigencnini[2*i] = cnini[i];
+			}
+			for(int i=0; i<(2*i_J+1);i++){
+				interim[0] = interim[0] + (v_anini[i])*(v_anini[i])/eigencnini[i];
+			}
+			gx1 = -1/2 * (sum(log(eigencnini)) + Rcpp::as<NumericVector>(tauini) * interim) + (Rcpp::as<NumericVector>(alphalambda) - 1) * log(x1) - Rcpp::as<NumericVector>(betalambda) * x1;
+	  resg = (gx1[0] >= logy[0]);
+        if (resg){ 
+            gxF=gx1;
+		res = FALSE;
+			}
+		res1 = (x1[0] > v_x0[0]);
+        if (res1) {
+            R2 = x1;
+        }
+        else {
+            L2 = x1;
+        }
+    }  
+ 	return Rcpp::List::create(Rcpp::Named("x1") = x1);
+
+
+}')
+
+
+
+cppFunction('double eigenfun(int n, double x) { 
+	int k1 = n%2;
+    	double k2 = (n - k1)/2;
+	double ret = 0;
+   	if (n == 1) {
+       		 ret = 1/sqrt(2 * M_PI) + 0 * x;
+    	}
+    	if (n > 1) {
+        	if (k1 == 0) {
+            		 ret = 1/sqrt(M_PI) * cos(k2 * x);
+        	}
+       		if (k1 == 1) {
+            		 ret = 1/sqrt(M_PI) * sin(k2 * x);
+       		}
+    }
+    return ret;
+}')
+
+
+cppFunction('Rcpp::List BayesBDbinary(SEXP obs, SEXP inimean, SEXP nrun, SEXP nburn, SEXP J) { 
+
+RNGScope scp;
+Rcpp::Function eigenfun("eigenfun");
+Rcpp::Function besselI("besselI");
+Rcpp::Function unislice2("unislice2");
+Rcpp::Function unisliceL("unisliceL");
+
+Rcpp::List 		      	obsL(obs);
+Rcpp::List temp2del;
+Rcpp::List lambdalist;
+double d_inimean 			= Rcpp::as<double>(inimean);
+int i_nrun 				= Rcpp::as<int>(nrun);
+int i_nburn				= Rcpp::as<int>(nburn);
+int i_J				= Rcpp::as<int>(J);
+NumericVector thetaobs 	 	= Rcpp::as<NumericVector>(obsL["theta.obs"]);
+int s					= thetaobs.size();
+Rcpp::NumericVector tmpmatk = Rcpp::NumericVector( Rcpp::Dimension(s));
+Rcpp::NumericVector mu    	 = Rcpp::NumericVector( Rcpp::Dimension(s));
+					for (int i=0; i<mu.size(); i++) {
+						mu[i]=d_inimean;
+					}
+int L                  		= 2*i_J+1;
+int alphatau          		= 500;
+int betatau           		= 1;
+int alphalambda      		= 2;
+int betalambda       		= 1;
+NumericVector demean  	      = Rcpp::as<NumericVector>(obsL["r.obs"]);
+NumericVector v_demean        = demean - mu;
+Rcpp::NumericVector diffini = v_demean; 
+NumericVector intensityobs    = Rcpp::as<NumericVector>(obsL["intensity"]);
+Rcpp::NumericVector eigencnk   	 = Rcpp::NumericVector( Rcpp::Dimension(1));eigencnk[0]=0.0;
+Rcpp::NumericVector ank   	 = Rcpp::NumericVector( Rcpp::Dimension(1));ank[0]=0.0;
+Rcpp::NumericVector astar   	 = Rcpp::NumericVector( Rcpp::Dimension(1));astar[0]=0.0;
+Rcpp::NumericVector bstar   	 = Rcpp::NumericVector( Rcpp::Dimension(1));bstar[0]=0.0;
+Rcpp::NumericVector tauinirg   	 = Rcpp::NumericVector( Rcpp::Dimension(1));tauinirg  =500.0;
+ Rcpp::NumericVector x1 = Rcpp::NumericVector( Rcpp::Dimension(1)); x1[0]=0.0;
+ Rcpp::NumericVector x2 = Rcpp::NumericVector( Rcpp::Dimension(1)); x2[0]=0.0;
+ Rcpp::NumericVector piin1 = Rcpp::NumericVector( Rcpp::Dimension(1)); piin1[0]=0.0;
+ Rcpp::NumericVector piin2 = Rcpp::NumericVector( Rcpp::Dimension(1)); piin2[0]=0.0;
+ Rcpp::NumericVector piout1 = Rcpp::NumericVector( Rcpp::Dimension(1)); piout1[0]=0.0;
+ Rcpp::NumericVector piout2 = Rcpp::NumericVector( Rcpp::Dimension(1)); piout2[0]=0.0;
+ Rcpp::NumericVector piinini = Rcpp::NumericVector( Rcpp::Dimension(1)); piinini[0]=0.0;
+ Rcpp::NumericVector pioutini = Rcpp::NumericVector( Rcpp::Dimension(1)); pioutini[0]=0.0;
+ Rcpp::NumericVector calc1 = Rcpp::NumericVector( Rcpp::Dimension(1)); calc1[0]=0.0;
+ Rcpp::NumericVector alphaini = Rcpp::NumericVector( Rcpp::Dimension(1)); alphaini[0]=0.0;
+ Rcpp::NumericVector betaini = Rcpp::NumericVector( Rcpp::Dimension(1)); betaini[0]=0.0;
+ Rcpp::NumericVector lambdaini = Rcpp::NumericVector( Rcpp::Dimension(1)); lambdaini[0]=1.0;
+  Rcpp::NumericVector anini = Rcpp::NumericVector( Rcpp::Dimension(L));
+ Rcpp::NumericMatrix tmpmat = Rcpp::NumericMatrix( Rcpp::Dimension(s, L));
+Rcpp::NumericVector cnini = Rcpp::NumericVector( Rcpp::Dimension(i_J+1));
+Rcpp::NumericVector eigencnini = Rcpp::NumericVector( Rcpp::Dimension(2*i_J+1));
+ Rcpp::NumericVector tmp2del2 = Rcpp::NumericVector( Rcpp::Dimension(1)); tmp2del2[0]=0.0;
+Rcpp::NumericVector interim = Rcpp::NumericVector( Rcpp::Dimension(1));interim[0] = 0.0;
+Rcpp::NumericVector rmat = Rcpp::NumericVector( Rcpp::Dimension(s));
+Rcpp::NumericVector tmpp = Rcpp::NumericVector( Rcpp::Dimension(s));
+Rcpp::NumericVector gx0 = Rcpp::NumericVector( Rcpp::Dimension(1)); gx0 = 0.0;
+int nout = 0;
+int noutone = 0;
+
+
+
+Rcpp::NumericVector idxOne    = Rcpp::NumericVector( Rcpp::Dimension(s));
+					for (int i=0; i<s; i++) {
+						idxOne[i]=0;
+					}
+int count               = 0;
+					for (int i=0; i<s; i++) {
+						if(intensityobs[i] == 1){
+							idxOne[i] = i;	
+							count++;
+						}
+					}
+
+for (int i=0; i<s; i++) {
+	for(int j = 0; j<L;j++){
+            tmpmat[s*j+i] = Rcpp::as<double>(eigenfun(j+1,thetaobs[i]));
+	}
+}
+
+
+
+piin1[0] = sum(ifelse(demean<mu,1,0)*ifelse(intensityobs==1,1,0));
+piin2[0] = sum(ifelse(demean<mu,1,0));
+piout1[0] = sum(ifelse(demean>=mu,1,0)*ifelse(intensityobs==1,1,0));
+piout2[0] = sum(ifelse(demean>=mu,1,0));
+
+
+piinini = piin1 / piin2;
+pioutini = piout1 / piout2;
+
+
+
+
+	calc1 = 2*M_PI*exp(-2*lambdaini);
+		for(int i=0; i<(i_J+1); i++){
+				cnini[i] = calc1[0]*Rcpp::as<double>(besselI(pmax(2*lambdaini,0),i));
+			}
+
+
+
+eigencnini[0] = cnini[0];
+for(int i=1; i<(i_J+1); i++){
+	eigencnini[2*i-1] = cnini[i];
+	eigencnini[2*i] = cnini[i];
+} 
+alphaini = log(piinini*(1-pioutini)/(pioutini*(1-piinini)));
+betaini = log((1 - piinini)/(1 - pioutini));
+IntegerVector tmp = ifelse(diffini < 0,1,0);
+int nin = 0;
+for(int i=0; i<diffini.size(); i++){
+	nin = nin + tmp[i];
+}
+int ninone = 0;
+for(int i=0; i<diffini.size(); i++){
+	if(intensityobs[i]==1){
+	ninone = ninone + tmp[i];
+	}
+}
+
+Rcpp::NumericVector thetaplot = Rcpp::NumericVector( Rcpp::Dimension(200));
+for(int k = 0; k<200; k++){
+ thetaplot[k] = 2.0*M_PI*(k/200.0); 
+}
+Rcpp::NumericVector estfunc = Rcpp::NumericVector( Rcpp::Dimension(1));
+Rcpp::NumericVector esttheta = Rcpp::NumericVector( Rcpp::Dimension(200));
+
+//main loop
+for(int i=0; i<i_nrun; i++){
+for(int k=0; k<L; k++){
+		eigencnk = eigencnini[k];
+		ank = anini[k];
+		for(int j=0;j<s;j++){
+			tmpmatk [j] = tmpmat[s*k+j];
+		}
+		gx0 = ninone*alphaini+nin*betaini-(((pow(ank,2))/eigencnk)*tauinirg/2);
+		temp2del = unislice2(ank,diffini,tmpmatk,ank,intensityobs,alphaini,betaini,eigencnk,tauinirg/2, ninone*alphaini+nin*betaini-(((pow(ank,2))/eigencnk)*tauinirg/2));
+		tmp2del2 = Rcpp::as<NumericVector>(temp2del["logdensity"]);
+		anini[k] = Rcpp::as<double>(temp2del["x1"]);
+		ninone = Rcpp::as<int>(temp2del["ninone"]);
+		nin = Rcpp::as<int>(temp2del["nin"]);
+		diffini = Rcpp::as<NumericVector>(temp2del["diffnew"]);
+
+	}
+
+astar = alphatau + L/2;
+
+for(int j=0; j<L;j++){
+	interim[0] = interim[0] + anini[j]*anini[j]/eigencnini[j];
+}
+
+bstar = betatau + interim/2;
+tauinirg = rgamma(1,astar[0],bstar[0]);
+for(int j = 0; j< s; j++){
+	for(int k = 0; k < L; k++){
+		rmat[j] = rmat[j] + tmpmat[s*k+j]*anini[k];	
+	}
+	rmat[j] = rmat[j] + mu[j];
+}
+for(int j = 0; j< s; j++){
+	if(demean[j]<=rmat[j]){tmpp[j]=1.0;}
+	else{tmpp[j]=0.0;}
+}
+nin = 0;
+for(int j=0; j<s; j++){
+	nin = nin + tmpp[j];
+}
+ninone = 0;
+for(int j=0; j<s; j++){
+	if(intensityobs[j]==1){
+	ninone = ninone + tmpp[j];
+	}
+}
+      nout = s - nin;
+       noutone = sum(intensityobs) - ninone;
+
+ x1 = rbeta(1, ninone, nin - ninone);
+ x2 = rbeta(1, noutone, nout - noutone);
+
+	piinini = pmax(x1, x2);
+        pioutini = pmin(x1, x2);
+
+        alphaini = log(piinini * (1 - pioutini)/(pioutini *(1 - piinini)));
+        betaini = log((1 - piinini)/(1 - pioutini));
+
+		gx0 = 0.0;
+			interim = 0.0;
+			for(int j=0; j<L;j++){
+				interim = interim + anini[j]*anini[j]/eigencnini[j];
+			}
+			gx0 = -1/2 * (sum(log(eigencnini)) + tauinirg * interim) + (alphalambda - 1) * log(lambdaini) - betalambda * lambdaini;
+
+	lambdalist = unisliceL(lambdaini, gx0, i_J, tauinirg, anini,  alphalambda,  betalambda, lambdaini);
+	lambdaini = Rcpp::as<NumericVector>(lambdalist["x1"]);
+
+for(int k = 0; k<200; k++){
+		estfunc[0]=0.0;
+  		for(int j = 0; j<L; j++){
+			estfunc[0] = estfunc[0] + Rcpp::as<double>(eigenfun(j+1,thetaplot[k]))*anini[j]+(d_inimean/L);
+		}
+		esttheta[k] =estfunc[0]+esttheta[k];
+}
+
+
+
+}
+
+
+esttheta = esttheta/(i_nrun - i_nburn);
+
+
+
+return Rcpp::List::create(Rcpp::Named("esttheta") = esttheta,Rcpp::Named("thetaplot") = thetaplot);
+
+}')
+
+# use ellipse boundary
+gamma.fun = ellipse(a = 0.35, b = 0.25)
+obs = par2obs(m = 100, pi.in = 0.5, pi.out = 0.2, design = 'J', gamma.fun)
+# rotate a matrix
+rotate <- function(x) t(apply(x, 2, rev))  # rotate closewise by 90 degrees
+# rotate & image it - square (asp = 1)
+image(rotate(obs$intensity), axes = FALSE, asp = 1, main = 'observation')
+
+cppsamp = BayesBDbinary(obs, .2, 4, 1, 10)
+x = cppsamp$esttheta*cos(cppsamp$thetaplot)+.5
+y = cppsamp$esttheta*sin(cppsamp$thetaplot) +.5
+lines(x,y, lty = 2, lwd = 3)
+
