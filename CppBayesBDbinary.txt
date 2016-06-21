@@ -479,7 +479,7 @@ Rcpp::NumericVector eigencnk   	 = Rcpp::NumericVector( Rcpp::Dimension(1));eige
 Rcpp::NumericVector ank   	 = Rcpp::NumericVector( Rcpp::Dimension(1));ank[0]=0.0;
 Rcpp::NumericVector astar   	 = Rcpp::NumericVector( Rcpp::Dimension(1));astar[0]=0.0;
 Rcpp::NumericVector bstar   	 = Rcpp::NumericVector( Rcpp::Dimension(1));bstar[0]=0.0;
-Rcpp::NumericVector tauinirg   	 = Rcpp::NumericVector( Rcpp::Dimension(1));tauinirg  =500.0;
+Rcpp::NumericVector tauinirg   	 = Rcpp::NumericVector( Rcpp::Dimension(1));tauinirg[0]  =500.0;
  Rcpp::NumericVector x1 = Rcpp::NumericVector( Rcpp::Dimension(1)); x1[0]=0.0;
  Rcpp::NumericVector x2 = Rcpp::NumericVector( Rcpp::Dimension(1)); x2[0]=0.0;
  Rcpp::NumericVector piin1 = Rcpp::NumericVector( Rcpp::Dimension(1)); piin1[0]=0.0;
@@ -499,24 +499,14 @@ Rcpp::NumericVector eigencnini = Rcpp::NumericVector( Rcpp::Dimension(2*i_J+1));
  Rcpp::NumericVector tmp2del2 = Rcpp::NumericVector( Rcpp::Dimension(1)); tmp2del2[0]=0.0;
 Rcpp::NumericVector interim = Rcpp::NumericVector( Rcpp::Dimension(1));interim[0] = 0.0;
 Rcpp::NumericVector rmat = Rcpp::NumericVector( Rcpp::Dimension(s));
+for (int i=0; i<s; i++) {
+	rmat[i] = 0.0;
+}
 Rcpp::NumericVector tmpp = Rcpp::NumericVector( Rcpp::Dimension(s));
 Rcpp::NumericVector gx0 = Rcpp::NumericVector( Rcpp::Dimension(1)); gx0 = 0.0;
 int nout = 0;
 int noutone = 0;
 
-
-
-Rcpp::NumericVector idxOne    = Rcpp::NumericVector( Rcpp::Dimension(s));
-					for (int i=0; i<s; i++) {
-						idxOne[i]=0;
-					}
-int count               = 0;
-					for (int i=0; i<s; i++) {
-						if(intensityobs[i] == 1){
-							idxOne[i] = i;	
-							count++;
-						}
-					}
 
 for (int i=0; i<s; i++) {
 	for(int j = 0; j<L;j++){
@@ -573,7 +563,7 @@ Rcpp::NumericVector esttheta = Rcpp::NumericVector( Rcpp::Dimension(200));
 
 //main loop
 for(int i=0; i<(i_nrun+i_nburn); i++){
-for(int k=0; k<1; k++){
+for(int k=0; k<L; k++){
 
 		eigencnk = eigencnini[k];
 		ank = anini[k];
@@ -590,7 +580,7 @@ for(int k=0; k<1; k++){
 
 	}
 
-astar = alphatau + L/2;
+astar = lambdaini + L/2;
 
 for(int j=0; j<L;j++){
 	interim[0] = interim[0] + anini[j]*anini[j]/eigencnini[j];
@@ -598,6 +588,9 @@ for(int j=0; j<L;j++){
 
 bstar = betatau + interim/2;
 tauinirg = rgamma(1,astar[0],bstar[0]);
+for (int i=0; i<s; i++) {
+	rmat[i] = 0.0;
+}
 for(int j = 0; j< s; j++){
 	for(int k = 0; k < L; k++){
 		rmat[j] = rmat[j] + tmpmat[s*k+j]*anini[k];	
@@ -660,6 +653,7 @@ esttheta = esttheta/i_nrun;
 //return Rcpp::List::create(Rcpp::Named("anini") = anini, Rcpp::Named("lambdaini") = lambdaini);
 return Rcpp::List::create(Rcpp::Named("esttheta") = esttheta,Rcpp::Named("thetaplot") = thetaplot);
 
+
 }')
 
 
@@ -668,11 +662,13 @@ return Rcpp::List::create(Rcpp::Named("esttheta") = esttheta,Rcpp::Named("thetap
 #########
 
 # use ellipse boundary
+set.seed(12345)
 gamma.fun = ellipse(a = 0.35, b = 0.25)
 obs = par2obs(m = 100, pi.in = 0.5, pi.out = 0.2, design = 'J', gamma.fun)
 rotate <- function(x) t(apply(x, 2, rev))  # rotate closewise by 90 degrees
 image(rotate(obs$intensity), axes = FALSE, asp = 1, main = 'observation')
 
+t1 = proc.time()
 
 # c++ functions used for MCMC updating called in R loop - tested and works
 ini.mean = 0.4
@@ -753,6 +749,8 @@ J = 10
             an.MC + mu.fun(theta.arg))
     }
 
+t2 = proc.time()
+t2-t1
 theta.plot = seq(from = 0, to = 2*pi, length.out = 200)
 plot.val = gamma.MC(theta.plot)
 x.plot = plot.val*cos(theta.plot)+.5
@@ -760,8 +758,11 @@ y.plot = plot.val*sin(theta.plot)+.5
 lines(x.plot, y.plot, lwd=2)
 
 
-# c++ only - not tested yet
+# c++ only - tested and working
+t1 = proc.time()
 cppsamp = BayesBDbinary(obs, .4, 5000, 1000, 10)
+t2 = proc.time()
+t2-t1
 x = cppsamp$esttheta*cos(cppsamp$thetaplot)+.5
 y = cppsamp$esttheta*sin(cppsamp$thetaplot) +.5
 lines(x,y, lty = 2, lwd = 3)
