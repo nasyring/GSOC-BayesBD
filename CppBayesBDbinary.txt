@@ -670,7 +670,9 @@ gx0 = -1/2 * (sum(log(eigencnini)) + tauinirg * interim) + (alphalambda - 1) * l
 lambdalist = unisliceL(lambdaini, gx0, i_J, tauinirg, anini,  alphalambda,  betalambda, lambdaini);
 lambdaini = Rcpp::as<NumericVector>(lambdalist["x1"]);
 
+if(i > i_nburn){
 ansum = ansum + anini;
+}
 
 }
 
@@ -814,7 +816,7 @@ obs = par2obs(m = 100, pi.in = 0.5, pi.out = 0.2, design = 'J', gamma.fun)
 rotate <- function(x) t(apply(x, 2, rev))  # rotate closewise by 90 degrees
 image(rotate(obs$intensity), axes = FALSE, asp = 1, main = 'observation')
 t1 = proc.time()
-cppsamp = BayesBDbinary(obs, .4, 5000, 1000, 10)
+cppsamp = BayesBDbinary(obs, .4, 4000, 1000, 10)
 t2 = proc.time()
 t2-t1
 x = cppsamp$esttheta*cos(cppsamp$thetaplot)+.5
@@ -823,7 +825,7 @@ lines(x,y, lty = 2, lwd = 3)
 
 # Runtime results: on an Intel Core i7-4790K CPU @ 4.00 GHz with 16 GB RAM running RGui 64-bit on Windows 10
 #                       user      system    elapsed
-#   c++ only            73.40     6.98      80.50 
+#   c++ only            62.75     6.98      69.83  
 #   c++ within R loop   139.57    5.69      145.31  
 #   Only R              230.86    0.44      233.89 
 
