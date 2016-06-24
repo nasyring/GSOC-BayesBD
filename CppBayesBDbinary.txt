@@ -1,5 +1,35 @@
+##########################################################################################
+#  Author: Nicholas Syring
+#  Title: BayesBD
+#  Contact: nasyring@ncsu.edu; GitHub
+##########################################################################################  	
+
+# Requirements:
+#               1. The libraries below.
+#               2. A c++ compiler.
+#               3. RTools.
+#               4. R 3.2+ recommended.
+
+
+# Directions:
+#		1.  Make sure you meet the requirements above.
+#		2.  Load the libraries below.
+#		3.  Load the functions into your R session: BayesBD.binary, unislice2,
+#		    unisliceL, eigenfun, and BayesBDbinary.
+#		4.  Run the examples at the end of the code.  There are three examples
+#		    comparing the runtime of R code, c++ within and R loop, and pure c++.
+
+
+
+# Required libraries.  
+
 library(BayesBD)
 library(Rcpp)
+library(RcppArmadillo)
+library(inline)
+
+# This is an edited version of BayesBD.binary, a function appearing in the BayesBD
+# library.  This function produces posterior samples for data from binary images.  
 
 BayesBD.binary = function (obs, ini.mean = 0.4, n.run = 5000, n.burn = 1000, 
     J = 10, output.all = FALSE) 
@@ -126,40 +156,44 @@ BayesBD.binary = function (obs, ini.mean = 0.4, n.run = 5000, n.burn = 1000,
 }
 
 
-cppFunction('Rcpp::List unislice2(Rcpp::NumericVector x0,Rcpp::NumericVector diff,Rcpp::NumericVector tmpmatk,Rcpp::NumericVector ank,Rcpp::NumericVector intensity,Rcpp::NumericVector g2,Rcpp::NumericVector g4,Rcpp::NumericVector g5,Rcpp::NumericVector g6,Rcpp::NumericVector gx0){
+# This is a c++ function which can be used with the Rcpp package to produce posterior
+# samples of the eigenfunction coefficients; see ... in Li and Ghosal 2015 for 
+# details.  This function is used by another c++ function, BayesBDbinary, below to loop
+# the posterior sampling process.
+
+cppFunction(depends = "RcppArmadillo",'Rcpp::List unislice2(arma::colvec x0,arma::colvec diff,arma::colvec tmpmatk,arma::colvec ank,arma::colvec intensity,arma::colvec g2,arma::colvec g4,arma::colvec g5,arma::colvec g6,arma::colvec gx0){
 RNGScope scope;
 double w = 1.0;
-int s = diff.size(); 
-Rcpp::NumericVector m = Rcpp::NumericVector( Rcpp::Dimension(1));
- m[0] = 10000.0; 
+int s = diff.n_rows; 
+arma::colvec m = arma::colvec(1);m.fill(10000.0);
 double d_m = 10000.0;
-Rcpp::NumericVector lower = Rcpp::NumericVector( Rcpp::Dimension(1)); lower[0] = -10000.0;
-Rcpp::NumericVector upper = Rcpp::NumericVector( Rcpp::Dimension(1)); upper[0] = 10000.0;
-   Rcpp::NumericVector logy = Rcpp::NumericVector( Rcpp::Dimension(1)); logy = gx0 - rexp(1);
-  Rcpp::NumericVector x1 = Rcpp::NumericVector( Rcpp::Dimension(1)); x1[0]=0.0;
- Rcpp::NumericVector gx1 = Rcpp::NumericVector( Rcpp::Dimension(1)); gx1[0]=0.0;
- Rcpp::NumericVector gxF = Rcpp::NumericVector( Rcpp::Dimension(1)); gxF[0]=0.0;
-   Rcpp::NumericVector u = Rcpp::NumericVector( Rcpp::Dimension(1)); u = runif(1, 0, w);
-     Rcpp::NumericVector L = Rcpp::NumericVector( Rcpp::Dimension(1)); L = x0 - u;
-    Rcpp::NumericVector R = Rcpp::NumericVector( Rcpp::Dimension(1)); R = x0 + (w - u);
-    Rcpp::NumericVector L2 = Rcpp::NumericVector( Rcpp::Dimension(1)); L2=L;
-    Rcpp::NumericVector R2 = Rcpp::NumericVector( Rcpp::Dimension(1)); R2=R;
-	Rcpp::NumericVector J = Rcpp::NumericVector( Rcpp::Dimension(1)); J = 0.0;
-	Rcpp::NumericVector K = Rcpp::NumericVector( Rcpp::Dimension(1)); K = 0.0;
+arma::colvec lower = arma::colvec(1); lower.fill(-10000.0);
+arma::colvec upper = arma::colvec(1); upper.fill(10000.0);
+NumericVector rexpval = rexp(1);
+arma::colvec logy = arma::colvec(1); logy(0) = gx0(0) - rexpval(0);
+arma::colvec x1 = arma::colvec(1); x1.fill(0.0);
+arma::colvec gx1 = arma::colvec(1); gx1.fill(0.0);
+arma::colvec gxF = arma::colvec(1); gxF.fill(0.0);
+arma::colvec u = arma::colvec(1); u = runif(1, 0, w);
+arma::colvec L = arma::colvec(1); L = x0 - u;
+arma::colvec R = arma::colvec(1); R = x0 + (w - u);
+arma::colvec L2 = arma::colvec(1); L2(0)=L(0);
+arma::colvec R2 = arma::colvec(1); R2(0)=R(0);
+arma::colvec J = arma::colvec(1); J.fill(0.0);
+arma::colvec K = arma::colvec(1); K.fill(0.0);
 Rcpp::LogicalVector LL = Rcpp::LogicalVector( Rcpp::Dimension(1));
 Rcpp::LogicalVector RR = Rcpp::LogicalVector( Rcpp::Dimension(1));
-Rcpp::NumericVector ggL = Rcpp::NumericVector( Rcpp::Dimension(1)); ggL=0.0;
-Rcpp::NumericVector ggR = Rcpp::NumericVector( Rcpp::Dimension(1)); ggR=0.0;
+arma::colvec ggL = arma::colvec(1); ggL.fill(0.0);
+arma::colvec ggR = arma::colvec(1); ggR.fill(0.0);
 Rcpp::LogicalVector gg1 = Rcpp::LogicalVector( Rcpp::Dimension(1));
 Rcpp::LogicalVector gxy = Rcpp::LogicalVector( Rcpp::Dimension(1));
 Rcpp::LogicalVector x10 = Rcpp::LogicalVector( Rcpp::Dimension(1));
-Rcpp::NumericVector diffnew = Rcpp::NumericVector( Rcpp::Dimension(s));
-Rcpp::NumericVector Lv = Rcpp::NumericVector( Rcpp::Dimension(s));
-Rcpp::NumericVector Rv = Rcpp::NumericVector( Rcpp::Dimension(s));
-Rcpp::NumericVector xv = Rcpp::NumericVector( Rcpp::Dimension(s));
-Rcpp::NumericVector ankv = Rcpp::NumericVector( Rcpp::Dimension(s));
-for(int i=0; i<s;i++){ ankv[i] = ank[0]; }
-Rcpp::NumericVector count = Rcpp::NumericVector( Rcpp::Dimension(1)); count=0.0;
+arma::colvec diffnew = arma::colvec(s);diffnew.fill(0.0);
+arma::colvec Lv = arma::colvec(s);Lv.fill(L(0));
+arma::colvec Rv = arma::colvec(s);Rv.fill(R(0));
+arma::colvec xv = arma::colvec(s);xv.fill(0.0);
+arma::colvec ankv = arma::colvec(s);ankv.fill(ank(0));
+arma::colvec count = arma::colvec(1); count.fill(0.0);
 bool res = TRUE;
 bool resL = FALSE;
 bool resR = FALSE;
@@ -167,35 +201,36 @@ bool resg = FALSE;
 bool res1 = FALSE;
 double dL = 0.0;
 double dR = 0.0;
-
-		int g1 = 0;
-		int g3 = 0;
+int g1 = 0;
+int g3 = 0;
 	
+
+
         J = floor(runif(1, 0.0, d_m));
         K = (m - 1) - J;
 		count = 0.0;
 while( res ){
             count = count+1;
-		res = is_true( all( count < J ) );
-		for(int i=0; i<s;i++){ Lv[i] = L[0]; }
-		diffnew = diff - (Lv - ankv) * tmpmatk;
+		res = count(0) < J(0);
+		Lv.fill(L(0));
+		diffnew = diff - ((Lv - ankv) % tmpmatk);
 		g1 = 0; g3 = 0;
 		for(int i=0; i<s;i++){
-			if(diffnew[i]<=0){
+			if(diffnew(i)<=0){
 				g3 = g3+1;
-				if(intensity[i]==1){
+				if(intensity(i)==1){
 					g1 = g1+1;
 				}
 			}
 		}
-		 resL = (L[0]<=lower[0]);
+		 resL = (L(0)<=lower(0));
          if (resL){ 
-			L2[0] = L[0]+w;
+			L2(0) = L(0);
 			res= FALSE;}
 		ggL = g1*g2+g3*g4-((pow(L,2))/g5)*g6;
-       	 resg = (ggL[0] <= logy[0]);
+       	 resg = (ggL(0) <= logy(0));
            if (resg){ 
-			L2[0] = L[0]+w;
+			L2(0) = L(0);
 			res=FALSE;}
             L = L - w;
      }
@@ -205,73 +240,77 @@ while( res ){
 		res = TRUE;
        while( res ){
             count=count+1;
-		res = is_true( all( count < K ) );
-		for(int i=0; i<s;i++){ Rv[i] = R[0]; }
-		diffnew = diff - (Rv - ankv) * tmpmatk;
+		res = count(0) < K(0);
+		Rv.fill(R(0));
+		diffnew = diff - ((Rv - ankv) % tmpmatk);
 		g1 = 0; g3 = 0;
 		for(int i=0; i<s;i++){
-			if(diffnew[i]<=0){
+			if(diffnew(i)<=0){
 				g3 = g3+1;
-				if(intensity[i]==1){
+				if(intensity(i)==1){
 					g1 = g1+1;
 				}
 			}
 		}
-		 resL = (R[0]>=upper[0]);
+		 resL = (R(0)>=upper(0));
             if (resL){ 
-               R2[0]=R[0]-w;
+               R2(0)=R(0);
 			res = FALSE;}
 		ggR = g1*g2+g3*g4-((pow(R,2))/g5)*g6;
-		 resg = (ggR[0] <= logy[0]);
+		 resg = (ggR(0) <= logy(0));
             if (resg){ 
-                R2[0]=R[0]-w;
+                R2(0)=R(0);
 			res = FALSE;}
             R = R + w;
           }
-	resL = (L2[0]<lower[0]);
+	resL = (L2(0)<lower(0));
     if (resL) {
-        L2 = lower;
+        L2(0) = lower(0);
     }
-	resR = (R2[0]>upper[0]);
+	resR = (R2(0)>upper(0));
     if (resR) {
-        R2 = upper;
+        R2(0) = upper(0);
     }
 	count = 0.0;
 	res = TRUE;
     while(res) {
 		count=count+1;
-	res = is_true( all( count < 1000 ) );
-	dL = L2[0];
-	dR = R2[0];
+	res = count(0) < 1000.0 ;
+	dL = L2(0);
+	dR = R2(0);
         x1 = runif(1, dL, dR);
-		for(int i=0; i<s;i++){ xv[i] = x1[0]; }
-		diffnew = diff - (xv - ankv) * tmpmatk;
+		xv.fill(x1(0));
+		diffnew = diff - ((xv - ankv) % tmpmatk);
 	     g1 =0; g3=0;
               for(int i=0; i<s;i++){
-			if(diffnew[i]<=0){
+			if(diffnew(i)<=0){
 				g3 = g3+1;
-				if(intensity[i]==1){
+				if(intensity(i)==1){
 					g1 = g1+1;
 				}
 			}
 		}
         gx1 = g1*g2+g3*g4-((pow(x1,2))/g5)*g6;
-	  resg = (gx1[0] >= logy[0]);
+	  resg = (gx1(0) >= logy(0));
         if (resg){ 
-            gxF[0]=gx1[0];
+            gxF(0)=gx1(0);
 		res = FALSE;
 			}
-		res1 = (x1[0] > x0[0]);
+		res1 = (x1(0) > x0(0));
         if (res1) {
-            R2[0] = x1[0];
+            R2(0) = x1(0);
         }
         else {
-            L2[0] = x1[0];
+            L2(0) = x1(0);
         }
     }  
   return Rcpp::List::create(Rcpp::Named("x1") = x1,Rcpp::Named("logdensity") = gxF,Rcpp::Named("diffnew") = diffnew,Rcpp::Named("nin") = g3,Rcpp::Named("ninone") =g1,Rcpp::Named("dL") =dL,Rcpp::Named("dR") =dR);
 }')
 
+# This is a c++ function which can be used with the Rcpp package to produce posterior
+# samples of the ... parameter; see ... in Li and Ghosal 2015 for 
+# details.  This function is used by another c++ function, BayesBDbinary, below to loop
+# the posterior sampling process.
 
 cppFunction('Rcpp::List unisliceL(SEXP x0, SEXP gx0, int i_J, SEXP tauini, SEXP anini, SEXP alphalambda, SEXP betalambda, int lambdaini){
 RNGScope scope;
@@ -423,6 +462,9 @@ while( res ){
 }')
 
 
+# This c++ function computes the nth eigenfunction of the SEP kernel.  It is used by
+# BayesBDbinary below.
+
 
 cppFunction('double eigenfun(int n, double x) { 
 	int k1 = n%2;
@@ -442,115 +484,138 @@ cppFunction('double eigenfun(int n, double x) {
     return ret;
 }')
 
+# This c++ function is a translation to c++ of the BayesBD.binary R function above.  It
+# produces posterior samples of the boundary of a binary image.  The output is a set of
+# boundary values at 200 points, to be plotted on the image. 
 
+cppFunction(depends = "RcppArmadillo",'Rcpp::List BayesBDbinary(SEXP obs, SEXP inimean, SEXP nrun, SEXP nburn, SEXP J) { 
 
-cppFunction('Rcpp::List BayesBDbinary(SEXP obs, SEXP inimean, SEXP nrun, SEXP nburn, SEXP J) { 
-
+// Including additional user-defined Rcpp functions
 RNGScope scp;
 Rcpp::Function eigenfun("eigenfun");
 Rcpp::Function besselI("besselI");
 Rcpp::Function unislice2("unislice2");
 Rcpp::Function unisliceL("unisliceL");
 
+// Extracting the inputs
 Rcpp::List 		      	obsL(obs);
-Rcpp::List temp2del;
-Rcpp::List lambdalist;
-double d_inimean 			= Rcpp::as<double>(inimean);
+arma::mat thetaobs 	 	= Rcpp::as<arma::mat>(obsL["theta.obs"]);
+arma::colvec demean 	 	= Rcpp::as<arma::colvec>(obsL["r.obs"]);
+arma::colvec intensityobs     = Rcpp::as<arma::colvec>(obsL["intensity"]);
 int i_nrun 				= Rcpp::as<int>(nrun);
 int i_nburn				= Rcpp::as<int>(nburn);
 int i_J				= Rcpp::as<int>(J);
-NumericVector thetaobs 	 	= Rcpp::as<NumericVector>(obsL["theta.obs"]);
+double d_inimean 			= Rcpp::as<double>(inimean);
+
+// Declaring variables 
+Rcpp::List temp2del;
+Rcpp::List lambdalist;
+
 int s					= thetaobs.size();
-Rcpp::NumericVector tmpmatk = Rcpp::NumericVector( Rcpp::Dimension(s));
-Rcpp::NumericVector mu    	 = Rcpp::NumericVector( Rcpp::Dimension(s));
-					for (int i=0; i<mu.size(); i++) {
-						mu[i]=d_inimean;
-					}
 int L                  		= 2*i_J+1;
-int alphatau          		= 500;
 int betatau           		= 1;
 int alphalambda      		= 2;
 int betalambda       		= 1;
-NumericVector demean  	      = Rcpp::as<NumericVector>(obsL["r.obs"]);
-NumericVector v_demean        = demean - mu;
-Rcpp::NumericVector diffini = v_demean; 
-NumericVector intensityobs    = Rcpp::as<NumericVector>(obsL["intensity"]);
-Rcpp::NumericVector eigencnk   	 = Rcpp::NumericVector( Rcpp::Dimension(1));eigencnk[0]=0.0;
-Rcpp::NumericVector ank   	 = Rcpp::NumericVector( Rcpp::Dimension(1));ank[0]=0.0;
-Rcpp::NumericVector astar   	 = Rcpp::NumericVector( Rcpp::Dimension(1));astar[0]=0.0;
-Rcpp::NumericVector bstar   	 = Rcpp::NumericVector( Rcpp::Dimension(1));bstar[0]=0.0;
-Rcpp::NumericVector tauinirg   	 = Rcpp::NumericVector( Rcpp::Dimension(1));tauinirg[0]  =500.0;
- Rcpp::NumericVector x1 = Rcpp::NumericVector( Rcpp::Dimension(1)); x1[0]=0.0;
- Rcpp::NumericVector x2 = Rcpp::NumericVector( Rcpp::Dimension(1)); x2[0]=0.0;
- Rcpp::NumericVector piin1 = Rcpp::NumericVector( Rcpp::Dimension(1)); piin1[0]=0.0;
- Rcpp::NumericVector piin2 = Rcpp::NumericVector( Rcpp::Dimension(1)); piin2[0]=0.0;
- Rcpp::NumericVector piout1 = Rcpp::NumericVector( Rcpp::Dimension(1)); piout1[0]=0.0;
- Rcpp::NumericVector piout2 = Rcpp::NumericVector( Rcpp::Dimension(1)); piout2[0]=0.0;
- Rcpp::NumericVector piinini = Rcpp::NumericVector( Rcpp::Dimension(1)); piinini[0]=0.0;
- Rcpp::NumericVector pioutini = Rcpp::NumericVector( Rcpp::Dimension(1)); pioutini[0]=0.0;
- Rcpp::NumericVector calc1 = Rcpp::NumericVector( Rcpp::Dimension(1)); calc1[0]=0.0;
- Rcpp::NumericVector alphaini = Rcpp::NumericVector( Rcpp::Dimension(1)); alphaini[0]=0.0;
- Rcpp::NumericVector betaini = Rcpp::NumericVector( Rcpp::Dimension(1)); betaini[0]=0.0;
- Rcpp::NumericVector lambdaini = Rcpp::NumericVector( Rcpp::Dimension(1)); lambdaini[0]=1.0;
-  Rcpp::NumericVector anini = Rcpp::NumericVector( Rcpp::Dimension(L));
- Rcpp::NumericMatrix tmpmat = Rcpp::NumericMatrix( Rcpp::Dimension(s, L));
-Rcpp::NumericVector cnini = Rcpp::NumericVector( Rcpp::Dimension(i_J+1));
-Rcpp::NumericVector eigencnini = Rcpp::NumericVector( Rcpp::Dimension(2*i_J+1));
- Rcpp::NumericVector tmp2del2 = Rcpp::NumericVector( Rcpp::Dimension(1)); tmp2del2[0]=0.0;
-Rcpp::NumericVector interim = Rcpp::NumericVector( Rcpp::Dimension(1));interim[0] = 0.0;
-Rcpp::NumericVector rmat = Rcpp::NumericVector( Rcpp::Dimension(s));
-for (int i=0; i<s; i++) {
-	rmat[i] = 0.0;
-}
-Rcpp::NumericVector tmpp = Rcpp::NumericVector( Rcpp::Dimension(s));
-Rcpp::NumericVector gx0 = Rcpp::NumericVector( Rcpp::Dimension(1)); gx0 = 0.0;
+int nin = 0;
+int ninone = 0;
 int nout = 0;
 int noutone = 0;
 
+arma::colvec tmpmatk		= arma::colvec(s); tmpmatk.fill(0.0);
+arma::colvec mu			= arma::colvec(s); mu.fill(d_inimean);
+arma::colvec v_demean         = demean - mu;
+arma::colvec diffini 		= v_demean; 
+arma::colvec eigencnk   	= arma::colvec(1); eigencnk.fill(0.0);
+arma::colvec ank   	      = arma::colvec(1); ank.fill(0.0); 
+arma::colvec astar   	      = arma::colvec(1); astar(0)=0.0;
+arma::colvec bstar   	      = arma::colvec(1); bstar(0)=0.0;
+arma::colvec tauinirg   	= arma::colvec(1); tauinirg(0)=500.0;
+arma::colvec x1 			= arma::colvec(1); x1.fill(0.0); 
+arma::colvec x2 			= arma::colvec(1); x2.fill(0.0);
+arma::colvec piin1 		= arma::colvec(1); piin1.fill(0.0);
+arma::colvec piin2 		= arma::colvec(1); piin2.fill(0.0);
+arma::colvec piout1 		= arma::colvec(1); piout1.fill(0.0);
+arma::colvec piout2 		= arma::colvec(1); piout2.fill(0.0);
+arma::colvec piinini 		= arma::colvec(1); piinini.fill(0.0);
+arma::colvec pioutini 		= arma::colvec(1); pioutini.fill(0.0);
+arma::colvec calc1 		= arma::colvec(1); calc1.fill(0.0);
+arma::colvec alphaini 		= arma::colvec(1); alphaini.fill(0.0);
+arma::colvec betaini 		= arma::colvec(1); betaini.fill(0.0);
+arma::colvec lambdaini 		= arma::colvec(1); lambdaini(0)=1.0;
+arma::colvec anini 		= arma::colvec(L); anini.fill(0.0);
+arma::colvec cnini            = arma::colvec(i_J+1); cnini.fill(0.0);
+arma::colvec eigencnini       = arma::colvec(L); eigencnini.fill(0.0);
+arma::colvec tmp2del2         = arma::colvec(1); tmp2del2.fill(0.0);
+arma::colvec interim          = arma::colvec(1); interim.fill(0.0);
+arma::colvec rmat             = arma::colvec(s); rmat.fill(0.0);
+arma::colvec tmpp             = arma::colvec(s); tmpp.fill(0.0);
+arma::colvec tmp              = arma::colvec(s); tmp.fill(0.0);
+arma::colvec gx0              = arma::colvec(1); gx0.fill(0.0);
+arma::colvec ansum		= arma::colvec(L); ansum.fill(0.0);
+arma::mat tmpmat              = arma::mat(s,L); tmpmat.fill(0.0);
 
+// Filling tmpmat with values for each of L eigenfunctions for each of s observations
 for (int i=0; i<s; i++) {
 	for(int j = 0; j<L;j++){
-            tmpmat[s*j+i] = Rcpp::as<double>(eigenfun(j+1,thetaobs[i]));
+            tmpmat(i,j) = Rcpp::as<double>(eigenfun(j+1,thetaobs[i]));
 	}
 }
 
 
+for(int i = 0; i<s; i++){
+	if(demean(i) < mu(i)){
+		if(intensityobs(i) == 1.0){
+			piin1(0) = piin1(0) + 1.0;
+		}
+	}
+}
 
-piin1[0] = sum(ifelse(demean<mu,1,0)*ifelse(intensityobs==1,1,0));
-piin2[0] = sum(ifelse(demean<mu,1,0));
-piout1[0] = sum(ifelse(demean>=mu,1,0)*ifelse(intensityobs==1,1,0));
-piout2[0] = sum(ifelse(demean>=mu,1,0));
+for(int i = 0; i<s; i++){
+	if(demean(i) < mu(i)){
+		piin2(0) = piin2(0) + 1.0;
+	}
+}
 
+for(int i = 0; i<s; i++){
+	if(demean(i) >= mu(i)){
+		if(intensityobs(i) == 1.0){
+			piout1(0) = piout1(0) + 1.0;
+		}
+	}
+}
+
+for(int i = 0; i<s; i++){
+	if(demean(i) >= mu(i)){
+		piout2(0) = piout2(0) + 1.0;
+	}
+}
 
 piinini = piin1 / piin2;
 pioutini = piout1 / piout2;
 
 
+calc1 = 2*M_PI*exp(-2*lambdaini);
+for(int i=0; i<(i_J+1); i++){
+	cnini(i) = calc1(0)*Rcpp::as<double>(besselI(max(2*lambdaini,0.0),i));
+}
 
-
-	calc1 = 2*M_PI*exp(-2*lambdaini);
-		for(int i=0; i<(i_J+1); i++){
-				cnini[i] = calc1[0]*Rcpp::as<double>(besselI(pmax(2*lambdaini,0),i));
-			}
-
-
-
-eigencnini[0] = cnini[0];
+eigencnini(0) = cnini(0);
 for(int i=1; i<(i_J+1); i++){
-	eigencnini[2*i-1] = cnini[i];
-	eigencnini[2*i] = cnini[i];
+	eigencnini(2*i-1) = cnini(i);
+	eigencnini(2*i) = cnini(i);
 } 
 alphaini = log(piinini*(1-pioutini)/(pioutini*(1-piinini)));
 betaini = log((1 - piinini)/(1 - pioutini));
-IntegerVector tmp = ifelse(diffini < 0,1,0);
-int nin = 0;
-for(int i=0; i<diffini.size(); i++){
-	nin = nin + tmp[i];
+for(int i = 0; i<s; i++){
+	if(diffini(i)<0){
+		tmp(i) = 1;
+	}
 }
-int ninone = 0;
-for(int i=0; i<diffini.size(); i++){
-	if(intensityobs[i]==1){
-	ninone = ninone + tmp[i];
+
+nin = sum(tmp);
+for(int i=0; i<s; i++){
+	if(intensityobs(i)==1){
+	ninone = ninone + tmp(i);
 	}
 }
 
@@ -564,113 +629,97 @@ Rcpp::NumericVector esttheta = Rcpp::NumericVector( Rcpp::Dimension(200));
 //main loop
 for(int i=0; i<(i_nrun+i_nburn); i++){
 for(int k=0; k<L; k++){
-
-		eigencnk = eigencnini[k];
-		ank = anini[k];
-		for(int j=0;j<s;j++){
-			tmpmatk [j] = tmpmat[s*k+j];
-		}
+		eigencnk(0) = eigencnini(k);
+		ank(0) = anini(k);
+		tmpmatk = tmpmat.col(k);
 		gx0 = ninone*alphaini+nin*betaini-(((pow(ank,2))/eigencnk)*tauinirg/2);
 		temp2del = unislice2(ank,diffini,tmpmatk,ank,intensityobs,alphaini,betaini,eigencnk,tauinirg/2, ninone*alphaini+nin*betaini-(((pow(ank,2))/eigencnk)*tauinirg/2));
-		tmp2del2 = Rcpp::as<NumericVector>(temp2del["logdensity"]);
-		anini[k] = Rcpp::as<double>(temp2del["x1"]);
+		tmp2del2 = Rcpp::as<arma::colvec>(temp2del["logdensity"]);
+		anini(k) = Rcpp::as<double>(temp2del["x1"]);
 		ninone = Rcpp::as<int>(temp2del["ninone"]);
 		nin = Rcpp::as<int>(temp2del["nin"]);
-		diffini = Rcpp::as<NumericVector>(temp2del["diffnew"]);
-
+		diffini = Rcpp::as<arma::colvec>(temp2del["diffnew"]);
 	}
 
 astar = lambdaini + L/2;
-
-for(int j=0; j<L;j++){
-	interim[0] = interim[0] + anini[j]*anini[j]/eigencnini[j];
-}
-
+interim = anini.t()*(anini / eigencnini);
 bstar = betatau + interim/2;
-tauinirg = rgamma(1,astar[0],bstar[0]);
-for (int i=0; i<s; i++) {
-	rmat[i] = 0.0;
-}
+tauinirg = rgamma(1,astar(0),bstar(0));
+rmat.fill(0);
+rmat = tmpmat*anini + mu;
 for(int j = 0; j< s; j++){
-	for(int k = 0; k < L; k++){
-		rmat[j] = rmat[j] + tmpmat[s*k+j]*anini[k];	
-	}
-	rmat[j] = rmat[j] + mu[j];
+	if(demean(j)<=rmat(j)){tmpp(j)=1.0;}
+	else{tmpp(j)=0.0;}
 }
-for(int j = 0; j< s; j++){
-	if(demean[j]<=rmat[j]){tmpp[j]=1.0;}
-	else{tmpp[j]=0.0;}
+nin = sum(tmpp);
+ninone = sum(intensityobs%tmpp);
+nout = s - nin;
+noutone = sum(intensityobs) - ninone;
+
+x1 = rbeta(1, ninone, nin - ninone);
+x2 = rbeta(1, noutone, nout - noutone);
+
+piinini = max(x1, x2);
+pioutini = min(x1, x2);
+
+alphaini = log(piinini * (1 - pioutini)/(pioutini *(1 - piinini)));
+betaini = log((1 - piinini)/(1 - pioutini));
+
+gx0 = -1/2 * (sum(log(eigencnini)) + tauinirg * interim) + (alphalambda - 1) * log(lambdaini) - betalambda * lambdaini;
+
+lambdalist = unisliceL(lambdaini, gx0, i_J, tauinirg, anini,  alphalambda,  betalambda, lambdaini);
+lambdaini = Rcpp::as<NumericVector>(lambdalist["x1"]);
+
+ansum = ansum + anini;
+
 }
-nin = 0;
-for(int j=0; j<s; j++){
-	nin = nin + tmpp[j];
-}
-ninone = 0;
-for(int j=0; j<s; j++){
-	if(intensityobs[j]==1){
-	ninone = ninone + tmpp[j];
-	}
-}
-      nout = s - nin;
-       noutone = sum(intensityobs) - ninone;
 
- x1 = rbeta(1, ninone, nin - ninone);
- x2 = rbeta(1, noutone, nout - noutone);
-
-	piinini = pmax(x1, x2);
-        pioutini = pmin(x1, x2);
-
-        alphaini = log(piinini * (1 - pioutini)/(pioutini *(1 - piinini)));
-        betaini = log((1 - piinini)/(1 - pioutini));
-
-		gx0 = 0.0;
-			interim = 0.0;
-			for(int j=0; j<L;j++){
-				interim = interim + anini[j]*anini[j]/eigencnini[j];
-			}
-			gx0 = -1/2 * (sum(log(eigencnini)) + tauinirg * interim) + (alphalambda - 1) * log(lambdaini) - betalambda * lambdaini;
-
-	lambdalist = unisliceL(lambdaini, gx0, i_J, tauinirg, anini,  alphalambda,  betalambda, lambdaini);
-	lambdaini = Rcpp::as<NumericVector>(lambdalist["x1"]);
-
+ansum = ansum/i_nrun;
 for(int k = 0; k<200; k++){
 		estfunc[0]=0.0;
   		for(int j = 0; j<L; j++){
-			if(i > i_nburn){
-			estfunc[0] = estfunc[0] + Rcpp::as<double>(eigenfun(j+1,thetaplot[k]))*anini[j]+(d_inimean/L);}
+			estfunc[0] = estfunc[0] + Rcpp::as<double>(eigenfun(j+1,thetaplot[k]))*ansum(j)+(d_inimean/L);
 		}
 		esttheta[k] =estfunc[0]+esttheta[k];
 }
 
-
-
-}
-
-
-esttheta = esttheta/i_nrun;
-
-
-//return Rcpp::List::create(Rcpp::Named("anini") = anini, Rcpp::Named("lambdaini") = lambdaini);
+//return Rcpp::List::create(Rcpp::Named("anini") = anini, Rcpp::Named("eigencnk") = eigencnk, Rcpp::Named("tmpmatk") = tmpmatk, Rcpp::Named("nin") = nin, Rcpp::Named("ninone") =ninone, Rcpp::Named("diffini") =  diffini,Rcpp::Named("gx0") =  gx0,Rcpp::Named("ank") =  ank,Rcpp::Named("eigencnini") =  eigencnini, Rcpp::Named("cnini") =  cnini );
 return Rcpp::List::create(Rcpp::Named("esttheta") = esttheta,Rcpp::Named("thetaplot") = thetaplot);
-
-
 }')
 
 
-#########
-#Examples
-#########
 
-# use ellipse boundary
+# Examples: What follows are examples of using R code only, and R loop with c++ sampling,
+# and c++ only to produce boundary estimates for binary images.  We set the seed before
+# each example to use the same data, and we compute the runtime for comparison. 
+
+
+
+# Example 1: R code only.  This uses the code from
 set.seed(12345)
 gamma.fun = ellipse(a = 0.35, b = 0.25)
 obs = par2obs(m = 100, pi.in = 0.5, pi.out = 0.2, design = 'J', gamma.fun)
 rotate <- function(x) t(apply(x, 2, rev))  # rotate closewise by 90 degrees
 image(rotate(obs$intensity), axes = FALSE, asp = 1, main = 'observation')
-
 t1 = proc.time()
+rbinary = BayesBD.binary(obs, ini.mean = 0.4, n.run = 5000, n.burn = 1000, J = 10, output.all = FALSE) 
+t2 = proc.time()
+t2-t1
+theta.plot = seq(from = 0, to = 2*pi, length.out = 200)
+plot.val = rbinary$gamma.hat(theta.plot)
+x.plot = plot.val*cos(theta.plot)+.5
+y.plot = plot.val*sin(theta.plot)+.5
+lines(x.plot, y.plot, lwd=2)
 
-# c++ functions used for MCMC updating called in R loop - tested and works
+
+
+# Example 2: c++ functions unislice2 and unisliceL used for MCMC updating are called # within an R loop
+set.seed(12345)
+gamma.fun = ellipse(a = 0.35, b = 0.25)
+obs = par2obs(m = 100, pi.in = 0.5, pi.out = 0.2, design = 'J', gamma.fun)
+rotate <- function(x) t(apply(x, 2, rev))  # rotate closewise by 90 degrees
+image(rotate(obs$intensity), axes = FALSE, asp = 1, main = 'observation')
+t1 = proc.time()
 ini.mean = 0.4
 n.run = 5000
 n.burn = 1000
@@ -758,7 +807,12 @@ y.plot = plot.val*sin(theta.plot)+.5
 lines(x.plot, y.plot, lwd=2)
 
 
-# c++ only - tested and working
+# Example 3: c++ only.  BayesBD is used to run the entire sampling process within c++.
+set.seed(12345)
+gamma.fun = ellipse(a = 0.35, b = 0.25)
+obs = par2obs(m = 100, pi.in = 0.5, pi.out = 0.2, design = 'J', gamma.fun)
+rotate <- function(x) t(apply(x, 2, rev))  # rotate closewise by 90 degrees
+image(rotate(obs$intensity), axes = FALSE, asp = 1, main = 'observation')
 t1 = proc.time()
 cppsamp = BayesBDbinary(obs, .4, 5000, 1000, 10)
 t2 = proc.time()
@@ -766,4 +820,10 @@ t2-t1
 x = cppsamp$esttheta*cos(cppsamp$thetaplot)+.5
 y = cppsamp$esttheta*sin(cppsamp$thetaplot) +.5
 lines(x,y, lty = 2, lwd = 3)
+
+# Runtime results: on an Intel Core i7-4790K CPU @ 4.00 GHz with 16 GB RAM running RGui 64-bit on Windows 10
+#                       user      system    elapsed
+#   c++ only            73.40     6.98      80.50 
+#   c++ within R loop   139.57    5.69      145.31  
+#   Only R              230.86    0.44      233.89 
 
