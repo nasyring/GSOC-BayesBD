@@ -14,8 +14,8 @@
 # Directions:
 #		1.  Make sure you meet the requirements above.
 #		2.  Load the libraries below.
-#		3.  Load the functions into your R session: BayesBD.binary, unislice2,
-#		    unisliceL, eigenfun, and BayesBDbinary.
+#		3.  Load the functions into your R session: BayesBD.norm, mhstep,
+#		    unisliceL, eigenfun, and BayesBDnorm.
 #		4.  Run the examples at the end of the code.  There are three examples
 #		    comparing the runtime of R code, c++ within and R loop, and pure c++.
 
@@ -196,8 +196,11 @@ return(list(mean = mean, x = x1, y = y1, lx = lx1, ly = ly1, ux = ux1, uy = uy1)
 }
 
 
-
-# MCMC Metropolis Hastings within Gibbs sampler for basis function coefficients
+# This is a c++ function which can be used with the Rcpp package to produce posterior
+# samples of the 'z' parameter; see Step 2 and its modifications in Section 5: Sampling 
+# Algorithms in Li and Ghosal 2015 for details.  This function is used by another c++
+# function, BayesBDnorm, below to loop the posterior sampling process. This version
+# does MCMC sampling using Metropolis Hastings within Gibbs
 
 cppFunction(depends = "RcppArmadillo",'Rcpp::List mhstep(int k, arma::mat tmpmat, arma::colvec mu,arma::colvec intensityobs,arma::colvec demean, arma::colvec an, arma::colvec alpha1, arma::colvec alpha2, arma::colvec beta, arma::colvec eigencn, arma::colvec tau, arma::colvec nin, arma::colvec mu1, arma::colvec mu2, arma::colvec sd1, arma::colvec sd2){
 RNGScope scope;
@@ -247,8 +250,8 @@ RNGScope scope;
  
 
 # This is a c++ function which can be used with the Rcpp package to produce posterior
-# samples of the ... parameter; see ... in Li and Ghosal 2015 for 
-# details.  This function is used by another c++ function, BayesBDbinary, below to loop
+# samples of the 'a' parameter; see Step 5 in Section 5: Sampling Algorithms in Li and Ghosal 2015 for 
+# details.  This function is used by another c++ function, BayesBDnorm, below to loop
 # the posterior sampling process.
 
 cppFunction('Rcpp::List unisliceL(SEXP x0, SEXP gx0, int i_J, SEXP tauini, SEXP anini, SEXP alphalambda, SEXP betalambda, int lambdaini){
@@ -607,131 +610,16 @@ for(int k = 0; k<200; k++){
 }
 
 
-//return Rcpp::List::create(Rcpp::Named("esttheta") = esttheta,Rcpp::Named("thetaplot") = thetaplot,Rcpp::Named("mu1") = mu1, Rcpp::Named("mu2") = mu2, Rcpp::Named("sd1") = sd1, Rcpp::Named("sd2") = sd2, Rcpp::Named("nin") = nin,Rcpp::Named("gx0") =gx0);
-return Rcpp::List::create(Rcpp::Named("esttheta") = esttheta,Rcpp::Named("thetaplot") = thetaplot,Rcpp::Named("anini") = anini,Rcpp::Named("mu1") = mu1, Rcpp::Named("mu2") = mu2, Rcpp::Named("sd1") = sd1, Rcpp::Named("sd2") = sd2, Rcpp::Named("nin") = nin, Rcpp::Named("R") = temp2del["R"], Rcpp::Named("uu") = temp2del["uu"], Rcpp::Named("anprop") = temp2del["annew"]);
+return Rcpp::List::create(Rcpp::Named("esttheta") = esttheta,Rcpp::Named("thetaplot") = thetaplot);
 }')
 
 
 
-# Examples: What follows are examples of using R code only, and R loop with c++ sampling,
+# Examples: What follows are examples of using R code only, an R loop with c++ sampling,
 # and c++ only to produce boundary estimates for binary images.  We set the seed before
 # each example to use the same data, and we compute the runtime for comparison. 
 
-
-
-# Untested ...Example 1: R code only.  This uses the code from
-set.seed(12345)
-gamma.fun = ellipse(a = 0.35, b = 0.25)
-obs = par2obs(m = 100, pi.in = 0.5, pi.out = 0.2, design = 'J', gamma.fun)
-rotate <- function(x) t(apply(x, 2, rev))  # rotate closewise by 90 degrees
-image(rotate(obs$intensity), axes = FALSE, asp = 1, main = 'observation')
-t1 = proc.time()
-rbinary = BayesBD.norm(obs, ini.mean = 0.4, n.run = 5000, n.burn = 1000, J = 10, output.all = FALSE) 
-t2 = proc.time()
-t2-t1
-theta.plot = seq(from = 0, to = 2*pi, length.out = 200)
-plot.val = rbinary$gamma.hat(theta.plot)
-x.plot = plot.val*cos(theta.plot)+.5
-y.plot = plot.val*sin(theta.plot)+.5
-lines(x.plot, y.plot, lwd=2)
-
-
-
-# Untested ...Example 2: c++ functions mhstep and unisliceL used for MCMC updating are called # within an R loop
-set.seed(12345)
-gamma.fun = ellipse(a = 0.35, b = 0.25)
-obs = par2obs(m = 100, pi.in = 0.5, pi.out = 0.2, design = 'J', gamma.fun)
-rotate <- function(x) t(apply(x, 2, rev))  # rotate closewise by 90 degrees
-image(rotate(obs$intensity), axes = FALSE, asp = 1, main = 'observation')
-t1 = proc.time()
-ini.mean = 0.4
-n.run = 5000
-n.burn = 1000
-J = 10
-
-    mu.fun <- function(theta) theta * 0 + ini.mean
-    mu = c(mu.fun(obs$theta.obs))
-    L = 2 * J + 1
-    alpha.tau = 500
-    beta.tau = 1
-    alpha.lambda = 2
-    beta.lambda = 1
-    obs$demean = obs$r.obs - mu
-    obs$idxOne = which(obs$intensity == 1)
-    tmp.mat = sapply(1:L, function(k) eigen.fun(k)(c(obs$theta.obs)))
-    an.smp = matrix(NA, L, n.run)
-    pi.smp = matrix(NA, 2, n.run)
-    tau.smp = rep(NA, n.run)
-    lambda.smp = rep(NA, n.run)
-    an.ini = rep(0, L)
-    pi.in.ini = sum((obs$r.obs < mu) * obs$intensity)/sum(obs$r.obs < 
-        mu)
-    pi.out.ini = sum((obs$r.obs > mu) * obs$intensity)/sum(obs$r.obs > 
-        mu)
-    tau.ini = 500
-    lambda.ini = 1
-    cn.ini = sapply(0:J, function(ith) 2 * pi * exp(-2 * lambda.ini) * 
-        besselI(2 * lambda.ini, ith))
-    eigen.cn.ini = rep(cn.ini, each = 2)[-1]
-    alpha.ini = log(pi.in.ini * (1 - pi.out.ini)/(pi.out.ini * 
-        (1 - pi.in.ini)))
-    beta.ini = log((1 - pi.in.ini)/(1 - pi.out.ini))
-    diff.ini = obs$demean - c(tmp.mat %*% an.ini)
-    tmp = (diff.ini < 0)
-    n.in <- sum(tmp)
-    n.in.one <- sum(tmp[obs$idxOne])
-	diff.ini = as.vector(diff.ini)
-    
-    for (ith in 1:n.run) {
-        for (k in 1:L) {
-            tmp2delete = unislice2(an.ini[k],diff.ini,tmp.mat[,k],an.ini[k],as.vector(obs$intensity),alpha.ini,beta.ini,eigen.cn.ini[k],tau.ini/2, n.in.one*alpha.ini+n.in*beta.ini-(((an.ini[k]^2)/eigen.cn.ini[k])*tau.ini/2))
-            an.ini[k] = tmp2delete$x1
-		diff.ini = tmp2delete$diffnew
-		n.in.one = tmp2delete$ninone
-		n.in = tmp2delete$nin
-        }
-        a.star = lambda.ini + L/2
-        b.star = beta.tau + sum(an.ini^2/eigen.cn.ini)/2
-        tau.ini = rgamma(1, shape = a.star, rate = b.star)
-        r.mat = c(tmp.mat %*% an.ini + mu)
-        tmp = (obs$r.obs <= r.mat)
-        n.in = sum(tmp)
-        n.in.one = sum(tmp * obs$intensity)
-        n.out = length(r.mat) - n.in
-        n.out.one = sum(obs$intensity) - n.in.one
-        x1 = rbeta(1, n.in.one, n.in - n.in.one)
-        x2 = rbeta(1, n.out.one, n.out - n.out.one)
-        pi.in.ini = max(x1, x2)
-        pi.out.ini = min(x1, x2)
-        alpha.ini = log(pi.in.ini * (1 - pi.out.ini)/(pi.out.ini * 
-            (1 - pi.in.ini)))
-        beta.ini = log((1 - pi.in.ini)/(1 - pi.out.ini))
-	  gx0 = -1/2 * (sum(log(eigen.cn.ini)) + tau.ini * sum((an.ini^2)/eigen.cn.ini)) + (alpha.lambda - 1) * log(lambda.ini) - beta.lambda * lambda.ini
-	  lambda.ini = unisliceL(lambda.ini, gx0, J, tau.ini, an.ini,  alpha.lambda,  beta.lambda, lambda.ini)$x1
-        cn.ini = sapply(0:J, function(ith) 2 * pi * exp(-2 * lambda.ini) * 
-           besselI(2 * lambda.ini, ith))
-        eigen.cn.ini = rep(cn.ini, each = 2)[-1]
-	  an.smp[, ith] = an.ini
-        pi.smp[, ith] = c(pi.in.ini, pi.out.ini)
-        lambda.smp[ith] = lambda.ini
-        tau.smp[ith] = tau.ini
-        }
-    an.MC = apply(an.smp[, n.burn:n.run], 1, mean)
-    gamma.MC <- function(theta.arg) {
-        c(sapply(1:L, function(k) eigen.fun(k)(theta.arg)) %*% 
-            an.MC + mu.fun(theta.arg))
-    }
-
-t2 = proc.time()
-t2-t1
-theta.plot = seq(from = 0, to = 2*pi, length.out = 200)
-plot.val = gamma.MC(theta.plot)
-x.plot = plot.val*cos(theta.plot)+.5
-y.plot = plot.val*sin(theta.plot)+.5
-lines(x.plot, y.plot, lwd=2)
-
-
-# Example 3: c++ only.  BayesBD is used to run the entire sampling process within c++.
+# Load this function.  This will be used to su=imulate image data.
 
 parnormobs = function (m, mu.in, mu.out, sd.in, sd.out, design, gamma.fun) {
     center = c(0.5, 0.5)
@@ -761,13 +649,175 @@ parnormobs = function (m, mu.in, mu.out, sd.in, sd.out, design, gamma.fun) {
 
 
 
+# Example 1: R code only.  This uses the code from
 set.seed(12345)
 gamma.fun = ellipse(a = 0.35, b = 0.25)
 obs = parnormobs(m = 100, mu.in = 4, mu.out = 1,sd.in = 1.5, sd.out = 1, design = 'J', gamma.fun)
 rotate <- function(x) t(apply(x, 2, rev))  # rotate closewise by 90 degrees
 image(rotate(obs$intensity), axes = FALSE, asp = 1, main = 'observation')
 t1 = proc.time()
-cppsamp = BayesBDnormal(obs, .4, 5000, 1000, 10)
+rbinary = BayesBD.norm(obs, ini.mean = 0.4, n.run = 5000, n.burn = 1000, J = 10, output.all = FALSE) 
+t2 = proc.time()
+t2-t1
+theta.plot = seq(from = 0, to = 2*pi, length.out = 200)
+plot.val = rbinary$gamma.hat(theta.plot)
+x.plot = plot.val*cos(theta.plot)+.5
+y.plot = plot.val*sin(theta.plot)+.5
+lines(x.plot, y.plot, lwd=2)
+
+
+
+# Example 2: c++ functions mhstep and unisliceL used for MCMC updating are called # within an R loop
+set.seed(12345)
+gamma.fun = ellipse(a = 0.35, b = 0.25)
+obs = parnormobs(m = 100, mu.in = 4, mu.out = 1,sd.in = 1.5, sd.out = 1, design = 'J', gamma.fun)
+rotate <- function(x) t(apply(x, 2, rev))  # rotate closewise by 90 degrees
+image(rotate(obs$intensity), axes = FALSE, asp = 1, main = 'observation')
+t1 = proc.time()
+ini.mean = 0.4
+n.run = 5000
+n.burn = 1000
+J = 10
+
+     mu.fun <- function(theta) theta * 0 + ini.mean
+    mu = c(mu.fun(obs$theta.obs))
+    L = 2 * J + 1
+    alpha.tau = 500
+    beta.tau = 1
+    alpha.lambda = 2
+    beta.lambda = 1
+    obs$demean = obs$r.obs - mu
+    tmp.mat = sapply(1:L, function(k) eigen.fun(k)(c(obs$theta.obs)))
+    an.smp = matrix(NA, L, n.run)
+    par.smp = matrix(NA, 4, n.run)
+    tau.smp = rep(NA, n.run)
+    lambda.smp = rep(NA, n.run)
+    an.ini = rep(0, L)
+	n.all = length(obs$intensity)
+    in.ini = (obs$r.obs < mu)
+    m0 = mean(obs$intensity)	
+    v0 = 1/var(as.vector(obs$intensity))
+    m1.ini = sum(in.ini * obs$intensity)/sum(in.ini)
+    m2.ini = sum((!in.ini) * obs$intensity)/sum(!in.ini)
+    s1.ini = sd(as.vector(obs$intensity)[as.vector(in.ini)==TRUE])
+    s2.ini = sd(as.vector(obs$intensity)[as.vector(in.ini)==FALSE])
+    tau.ini = 500
+    lambda.ini = 1
+    cn.ini = sapply(0:J, function(ith) 2 * pi * exp(-2 * lambda.ini) * 
+        besselI(2 * lambda.ini, ith))
+    eigen.cn.ini = rep(cn.ini, each = 2)[-1]
+    diff.ini = obs$demean - c(tmp.mat %*% an.ini)
+    tmp = (diff.ini < 0)
+    n.in <- sum(tmp)
+    alpha1.ini = -log(s1.ini) 
+	alpha2.ini = - log(s2.ini)
+    beta.ini = -((2*((s1.ini)^2))^(-1))*sum(in.ini * ((obs$intensity-m1.ini)^2))-((2*((s2.ini)^2))^(-1))*sum((!in.ini) * ((obs$intensity-m2.ini)^2))
+    mh.step <- function(k, an, alpha1,alpha2, beta, eigen.cn, tau,n.in,m1, m2, s1, s2) {
+	  ret = list(an = an,n.in = n.in, beta = beta)
+        eigen.cn.ini = eigen.cn
+        an.old = matrix(an,L,1)
+	  an.new.k = rnorm(1,an.old[k],.1)
+	  an.new = an.old
+	  an.new[k,1] = an.new.k
+	  lL.old = n.in * alpha1-n.in*alpha2 + beta - t(an.old)%*%solve(diag(eigen.cn.ini))%*%an.old*tau.ini/2 
+	  r.mat = c(tmp.mat %*% an.new + mu)
+        tmp <- (obs$r.obs <= r.mat)
+        n.in.new <- sum(tmp)
+	  beta.ini = -((2*((s1)^2))^(-1))*sum(tmp * ((obs$intensity-m1)^2))-((2*((s2)^2))^(-1))*sum((!tmp) * ((obs$intensity-m2)^2))
+	  lL.new = n.in.new * alpha1-n.in.new*alpha2 + beta.ini - t(an.new)%*%solve(diag(eigen.cn.ini))%*%an.new*tau.ini/2
+        r = lL.new - lL.old + dnorm(an.new.k, an.old[k,1],.1) - dnorm(an.old[k,1],an.new.k ,.1)
+        R <- min(exp(r), 1)
+        if(runif(1) <= R) {
+       	ret = list(an = an.new,n.in = n.in.new, beta = beta.ini)
+        } 
+	  return(ret)
+    }
+
+    logL.lambda = function(tau, an) {
+        ret = function(lambda) {
+            cn = sapply(0:J, function(ith) 2 * pi * exp(-2 * 
+                lambda) * besselI(2 * lambda, ith))
+            eigen.cn = rep(cn, each = 2)[-1]
+            ret2 = -1/2 * (sum(log(eigen.cn)) + tau * sum(an^2/eigen.cn)) + 
+                (alpha.lambda - 1) * log(lambda) - beta.lambda * 
+                lambda
+            return(ret2)
+        }
+        return(ret)
+    }
+    start <- proc.time()
+    for (ith in 1:n.run) {
+	k=1
+        for (k in 1:L) {
+          		an.n.new = mh.step(k,an.ini, alpha1.ini,alpha2.ini, beta.ini, eigen.cn.ini, tau.ini,n.in, m1.ini, m2.ini, s1.ini, s2.ini)
+			n.in = an.n.new$n.in
+			an.ini = an.n.new$an
+			beta.ini = an.n.new$beta
+	        }
+	  a.star = alpha.tau + L/2
+        b.star = beta.tau + sum(an.ini^2/eigen.cn.ini)/2
+        tau.ini = rgamma(1, shape = a.star, rate = b.star)
+        r.mat = c(tmp.mat %*% an.ini + mu)
+        tmp <- (obs$r.obs <= r.mat)
+        n.in <- sum(tmp)
+        n.out = length(r.mat) - n.in
+	  mean.in = ifelse(sum(tmp)==0,0,sum(tmp*obs$intensity)/n.in)
+	  mean.out = ifelse(sum(!tmp)==0,0,sum((!tmp)*obs$intensity)/n.out)
+        m1.0 = (n.in/(n.in+1))*mean.in + (1/(n.in+1))*m0
+	  m2.0 = (n.out/(n.out+1))*mean.out + (1/(n.out+1))*m0
+	  alph1.0 = 10+n.in/2
+	  beta1.0 = .1+.5*sum(tmp*((obs$intensity-mean.in)^2)) + (n.in/(1+n.in))*(.5*(mean.in - m0)^2)
+        alph2.0 = 10+n.out/2
+	  beta2.0 = .11+.5*sum((!tmp)*((obs$intensity-mean.out)^2)) + (n.out/(1+n.out))*(.5*(mean.out - m0)^2)
+	  x3 = 1/rgamma(1,shape = alph1.0,rate = beta1.0)
+	  x4 = 1/rgamma(1,shape = alph2.0,rate = beta2.0)	  
+	  s1.ini = x3^.5
+	  s2.ini = x4^.5
+	  x1 = rnorm(1,m1.0,sd = s1.ini/sqrt(n.in+1))
+        x2 = rnorm(1,m2.0,sd = s2.ini/sqrt(n.out+1))
+        m1.ini = x1
+	  m2.ini = x2
+        alpha1.ini = -log(s1.ini) 
+	  alpha2.ini = - log(s2.ini)
+        beta.ini = -((2*((s1.ini)^2))^(-1))*sum(tmp * ((obs$intensity-m1.ini)^2))-((2*((s2.ini)^2))^(-1))*sum((!tmp) * ((obs$intensity-m2.ini)^2))
+        lambda.ini = uni.slice(lambda.ini, g = logL.lambda(tau = tau.ini, 
+            an = an.ini), lower = 0, upper = 100)
+        an.smp[, ith] = an.ini
+        par.smp[, ith] = c(m1.ini,m2.ini,s1.ini,s2.ini)
+        lambda.smp[ith] = lambda.ini
+        tau.smp[ith] = tau.ini
+        if (ith%%floor(n.run/100) == 1) {
+            duration = proc.time() - start
+           # cat(ith, "th iteration:", "ETA:", duration[3]/ith * 
+            #    (n.run - ith), "\n")
+        }
+    }
+    Total.Time = proc.time() - start
+    an.MC = apply(an.smp[, n.burn:n.run], 1, mean)
+    gamma.MC <- function(theta.arg) {
+        c(sapply(1:L, function(k) eigen.fun(k)(theta.arg)) %*% 
+            an.MC + mu.fun(theta.arg))
+    }
+
+
+t2 = proc.time()
+t2-t1
+theta.plot = seq(from = 0, to = 2*pi, length.out = 200)
+plot.val = gamma.MC(theta.plot)
+x.plot = plot.val*cos(theta.plot)+.5
+y.plot = plot.val*sin(theta.plot)+.5
+lines(x.plot, y.plot, lwd=2)
+
+
+# Example 3: c++ only.  BayesBDnormal is used to run the entire sampling process within c++.
+
+set.seed(12345)
+gamma.fun = ellipse(a = 0.35, b = 0.25)
+obs = parnormobs(m = 100, mu.in = 4, mu.out = 1,sd.in = 1.5, sd.out = 1, design = 'J', gamma.fun)
+rotate <- function(x) t(apply(x, 2, rev))  # rotate closewise by 90 degrees
+image(rotate(obs$intensity), axes = FALSE, asp = 1, main = 'observation')
+t1 = proc.time()
+cppsamp = BayesBDnormal(obs, .4, 4000, 1000, 10)
 cppsamp
 t2 = proc.time()
 t2-t1
@@ -777,7 +827,7 @@ lines(x,y, lty = 2, lwd = 3)
 
 # Runtime results: on an Intel Core i7-4790K CPU @ 4.00 GHz with 16 GB RAM running RGui 64-bit on Windows 10
 #                       user      system    elapsed
-#   c++ only            154.80   58.28  240.58   
-#   c++ within R loop   untested 
-#   Only R              untested
+#   c++ only            114.28   60.67  175.26    
+#   c++ within R loop   60.99    0.29   61.50  
+#   Only R              67.82    0.05   68.01 
 
