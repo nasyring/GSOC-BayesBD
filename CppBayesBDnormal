@@ -1,7 +1,7 @@
 ##########################################################################################
 #  Author: Nicholas Syring
 #  Title: BayesBD
-#  Contact: nasyring@ncsu.edu; GitHub nasyring
+#  Contact: nasyring@ncsu.edu; GitHub
 ##########################################################################################  	
 
 # Requirements:
@@ -67,20 +67,20 @@ BayesBD.norm = function (obs, ini.mean, n.run = 10000, n.burn = 1000,
     alpha1.ini = -log(s1.ini) 
 	alpha2.ini = - log(s2.ini)
     beta.ini = -((2*((s1.ini)^2))^(-1))*sum(in.ini * ((obs$intensity-m1.ini)^2))-((2*((s2.ini)^2))^(-1))*sum((!in.ini) * ((obs$intensity-m2.ini)^2))
-    mh.step <- function(k, an, alpha1,alpha2, beta, eigen.cn, tau,n.in,m1, m2, s1, s2) {
+    mh.step <- function(k, an, alpha1,alpha2, beta, tmp.mat, eigen.cn, tau,n.in,m1, m2, s1, s2) {
 	  ret = list(an = an,n.in = n.in, beta = beta)
         eigen.cn.ini = eigen.cn
         an.old = matrix(an,L,1)
-	  an.new.k = rnorm(1,an.old[k],.1)
+	  an.new.k = rnorm(1,an.old[k],.05)
 	  an.new = an.old
 	  an.new[k,1] = an.new.k
-	  lL.old = n.in * alpha1-n.in*alpha2 + beta - t(an.old)%*%solve(diag(eigen.cn.ini))%*%an.old*tau.ini/2 
+	  lL.old = n.in * alpha1-n.in*alpha2 + beta - t(an.old)%*%diag(1/eigen.cn.ini)%*%an.old*tau.ini/2 
 	  r.mat = c(tmp.mat %*% an.new + mu)
         tmp <- (obs$r.obs <= r.mat)
         n.in.new <- sum(tmp)
 	  beta.ini = -((2*((s1)^2))^(-1))*sum(tmp * ((obs$intensity-m1)^2))-((2*((s2)^2))^(-1))*sum((!tmp) * ((obs$intensity-m2)^2))
-	  lL.new = n.in.new * alpha1-n.in.new*alpha2 + beta.ini - t(an.new)%*%solve(diag(eigen.cn.ini))%*%an.new*tau.ini/2
-        r = lL.new - lL.old + dnorm(an.new.k, an.old[k,1],.1) - dnorm(an.old[k,1],an.new.k ,.1)
+	  lL.new = n.in.new * alpha1-n.in.new*alpha2 + beta.ini - t(an.new)%*%diag(1/eigen.cn.ini)%*%an.new*tau.ini/2
+        r = lL.new - lL.old + dnorm(an.new.k, an.old[k,1],.05) - dnorm(an.old[k,1],an.new.k ,.05)
         R <- min(exp(r), 1)
         if(runif(1) <= R) {
        	ret = list(an = an.new,n.in = n.in.new, beta = beta.ini)
@@ -102,9 +102,8 @@ BayesBD.norm = function (obs, ini.mean, n.run = 10000, n.burn = 1000,
     }
     start <- proc.time()
     for (ith in 1:n.run) {
-	k=1
         for (k in 1:L) {
-          		an.n.new = mh.step(k,an.ini, alpha1.ini,alpha2.ini, beta.ini, eigen.cn.ini, tau.ini,n.in, m1.ini, m2.ini, s1.ini, s2.ini)
+          		an.n.new = mh.step(k,an.ini, alpha1.ini,alpha2.ini, beta.ini,tmp.mat, eigen.cn.ini, tau.ini,n.in, m1.ini, m2.ini, s1.ini, s2.ini)
 			n.in = an.n.new$n.in
 			an.ini = an.n.new$an
 			beta.ini = an.n.new$beta
@@ -202,6 +201,7 @@ return(list(mean = mean, x = x1, y = y1, lx = lx1, ly = ly1, ux = ux1, uy = uy1)
 # function, BayesBDnorm, below to loop the posterior sampling process. This version
 # does MCMC sampling using Metropolis Hastings within Gibbs
 
+
 cppFunction(depends = "RcppArmadillo",'Rcpp::List mhstep(int k, arma::mat tmpmat, arma::colvec mu,arma::colvec intensityobs,arma::colvec demean, arma::colvec an, arma::colvec alpha1, arma::colvec alpha2, arma::colvec beta, arma::colvec eigencn, arma::colvec tau, arma::colvec nin, arma::colvec mu1, arma::colvec mu2, arma::colvec sd1, arma::colvec sd2){
 RNGScope scope;
 	int s = mu.n_rows;
@@ -213,6 +213,7 @@ RNGScope scope;
 	arma::colvec lLnew = arma::colvec(1); lLnew.fill(0.0);
 	arma::colvec rmat = arma::colvec(s); rmat.fill(0.0);
 	arma::colvec ninnew = arma::colvec(1); ninnew.fill(0.0);
+	arma::colvec sdcomp = arma::colvec(1); sdcomp.fill(0.0);
 	arma::colvec std_sum = arma::colvec(1); std_sum.fill(0.0);
 	Rcpp::NumericVector r = Rcpp::NumericVector( Rcpp::Dimension(1)); r[0] = 0.0;
 	Rcpp::NumericVector lLnewr = Rcpp::NumericVector( Rcpp::Dimension(1)); lLnewr[0] = 0.0;
@@ -224,18 +225,16 @@ RNGScope scope;
 	Rcpp::List ret = Rcpp::List::create(Rcpp::Named("ank") = anoldk, Rcpp::Named("nin") = nin, Rcpp::Named("beta") = beta, Rcpp::Named("R") = 1234);
 	Rcpp::NumericVector nnew = Rcpp::NumericVector( Rcpp::Dimension(1)); nnew[0]=annewk(0);
 	Rcpp::NumericVector old = Rcpp::NumericVector( Rcpp::Dimension(1)); old[0]=anoldk(0); 
-	lLold = nin * alpha1-nin*alpha2 - beta - an.t()*inv(diagmat(eigencn))*an*tau/2; 
+	lLold = nin * alpha1-nin*alpha2 - beta - an.t()*diagmat(1.0/eigencn)*an*tau/2; 
 	rmat = tmpmat*annew + mu;
 	for(int i = 0; i<s; i++){
 		if(demean(i)<rmat(i)){
-			tmp(i) = 1;
-			std_sum = std_sum + pow(intensityobs(i)-mu1(0),2)/(2.0*pow(sd1(0),2));
-		}else{
-			std_sum = std_sum + pow(intensityobs(i)-mu2(0),2)/(2.0*pow(sd2(0),2));
-		}
+			tmp(i) = 1;}
 	}
+	sdcomp = (intensityobs - (tmp*mu1(0) + (1.0-tmp)*mu2(0)))/(tmp*sd1(0) + (1.0-tmp)*sd2(0));
+	std_sum = sdcomp.t()*sdcomp/2.0;
 	ninnew(0) = sum(tmp);
-	lLnew = ninnew * alpha1-ninnew*alpha2 - std_sum - annew.t()*inv(diagmat(eigencn))*annew*tau/2;
+	lLnew = ninnew * alpha1-ninnew*alpha2 - std_sum - annew.t()*diagmat(1.0/eigencn)*annew*tau/2;
 	lLnewr[0] = lLnew(0); lLoldr[0] = lLold(0); 
 	r = lLnewr - lLoldr + dnorm(nnew, old[0],.05) - dnorm(old,nnew[0],.05);
       R(0) = fmin(exp(r[0]), 1.0);
@@ -246,8 +245,7 @@ RNGScope scope;
 		ret = Rcpp::List::create(Rcpp::Named("ank") = anoldk, Rcpp::Named("nin") = nin, Rcpp::Named("beta") = beta, Rcpp::Named("R") = R,Rcpp::Named("uu") = uu,Rcpp::Named("annew") = annew);
 	}
 	return(ret);
-}')
- 
+}') 
 
 # This is a c++ function which can be used with the Rcpp package to produce posterior
 # samples of the 'a' parameter; see Step 5 in Section 5: Sampling Algorithms in Li and Ghosal 2015 for 
@@ -464,8 +462,7 @@ int nout = 0;
 
 arma::colvec tmpmatk		= arma::colvec(s); tmpmatk.fill(0.0);
 arma::colvec mu			= arma::colvec(s); mu.fill(d_inimean);
-arma::colvec v_demean         = demean - mu;
-arma::colvec diffini 		= v_demean; 
+arma::colvec diffini          = demean - mu;
 arma::colvec eigencnk   	= arma::colvec(1); eigencnk.fill(0.0);
 arma::colvec ank   	      = arma::colvec(1); ank.fill(0.0); 
 arma::colvec astar   	      = arma::colvec(1); astar(0)=0.0;
@@ -491,11 +488,10 @@ arma::colvec lambdaini 		= arma::colvec(1); lambdaini(0)=1.0;
 arma::colvec anini 		= arma::colvec(L); anini.fill(0.0);
 arma::colvec cnini            = arma::colvec(i_J+1); cnini.fill(0.0);
 arma::colvec eigencnini       = arma::colvec(L); eigencnini.fill(0.0);
-arma::colvec tmp2del2         = arma::colvec(1); tmp2del2.fill(0.0);
 arma::colvec interim          = arma::colvec(1); interim.fill(0.0);
 arma::colvec rmat             = arma::colvec(s); rmat.fill(0.0);
 arma::colvec tmpp             = arma::colvec(s); tmpp.fill(0.0);
-arma::colvec tmp              = arma::colvec(s); tmp.fill(0.0);
+arma::colvec sdcomp           = arma::colvec(s); sdcomp.fill(0.0);
 arma::colvec gx0              = arma::colvec(1); gx0.fill(0.0);
 arma::colvec ansum		= arma::colvec(L); ansum.fill(0.0);
 
@@ -523,20 +519,16 @@ for(int i=1; i<(i_J+1); i++){
 
 for(int i = 0; i<s; i++){
 	if(diffini(i)<0){
-		tmp(i) = 1;
+		tmpp(i) = 1;
 	}
 }
 
-nin = sum(tmp);
+nin = sum(tmpp);
 nout = s - nin;
 
-for(int i=0; i<s;i++){
-	if(diffini(i)<=0){
-		std_sum = std_sum + pow(intensityobs(i)-mu1(0),2)/(2.0*pow(sd1(0),2));
-	}else{
-		std_sum = std_sum + pow(intensityobs(i)-mu2(0),2)/(2.0*pow(sd2(0),2));
-	}	
-}
+sdcomp = (intensityobs - (tmpp*mu1(0) + (1.0-tmpp)*mu2(0)))/(tmpp*sd1(0) + (1.0-tmpp)*sd2(0));
+std_sum = sdcomp.t()*sdcomp/2.0;
+
 
 Rcpp::NumericVector thetaplot = Rcpp::NumericVector( Rcpp::Dimension(200));
 for(int k = 0; k<200; k++){
@@ -548,10 +540,6 @@ Rcpp::NumericVector esttheta = Rcpp::NumericVector( Rcpp::Dimension(200));
 //main loop
 for(int i=0; i<(i_nrun+i_nburn); i++){
 for(int k=0; k<L; k++){
-		eigencnk(0) = eigencnini(k);
-		ank(0) = anini(k);
-		tmpmatk = tmpmat.col(k);
-		gx0 = -nin*(log(sd1(0))-log(sd2(0))) - std_sum - ((pow(ank,2))/eigencnk(0))*(tauinirg(0)/2);
 		temp2del = mhstep(k, tmpmat, mu, intensityobs, demean, anini, -log(sd1(0)),-log(sd2(0)), std_sum, eigencnini, tauinirg, nin, mu1, mu2, sd1, sd2);
 		anini(k) = Rcpp::as<double>(temp2del["ank"]);
 		nin = Rcpp::as<int>(temp2del["nin"]);
@@ -561,34 +549,24 @@ astar = lambdaini + L/2;
 interim = anini.t()*(anini / eigencnini);
 bstar = betatau + interim/2;
 tauinirg = rgamma(1,astar(0),bstar(0));
-rmat.fill(0);
 rmat = tmpmat*anini + mu;
-xinsum(0) = 0.0;
-xoutsum(0) = 0.0;
-xinsumsq(0) = 0.0;
-xoutsumsq(0) = 0.0;
 for(int j = 0; j< s; j++){
-	if(demean(j)<=rmat(j)){tmpp(j)=1.0;xinsum(0) = xinsum(0) + intensityobs(j);xinsumsq(0) = xinsumsq(0) + pow(intensityobs(j),2);}
-	else{tmpp(j)=0.0;xoutsum(0) = xoutsum(0) + intensityobs(j);xoutsumsq(0) = xoutsumsq(0) + pow(intensityobs(j),2);}
+	if(demean(j)<=rmat(j)){tmpp(j)=1.0;}
+	else{tmpp(j)=0.0;}
 }
 nin = sum(tmpp); nout = s - nin;
-xbarin(0) = xinsum(0)/nin; xbarout(0) = xoutsum(0)/nout;
-ssin(0) = (xinsumsq(0) - pow(xinsum(0),2)/nin)/2;
-ssout(0) = (xoutsumsq(0) - pow(xoutsum(0),2)/nout)/2;
+xbarin = tmpp.t()*intensityobs/nin; xbarout = intensityobs.t()*(1.0-tmpp)/nout;
+ssin = trans(intensityobs % tmpp - xbarin(0)* tmpp)*(intensityobs % tmpp - xbarin(0)* tmpp);
+ssout = trans(intensityobs % (1.0-tmpp) - xbarout(0)* (1.0-tmpp))*(intensityobs % (1.0-tmpp) - xbarout(0)* (1.0-tmpp));
 
 sd1 = pow(1/rgamma(1, 0.01 + nin/2, 1/(0.01+ssin(0) + (nin/(nin+1))*(pow(xbarin(0) - mu0(0),2.0)/2))),0.5);
 sd2 = pow(1/rgamma(1, 0.01 + nout/2, 1/(0.01+ssout(0) + (nout/(nout+1))*(pow(xbarout(0) - mu0(0),2.0)/2))),0.5);
 mu1 = rnorm(1,mu0(0)/(nin+1) + nin*xbarin(0)/(nin+1), sd1(0)/pow(nin+1.0,0.5));
 mu2 = rnorm(1,mu0(0)/(nout+1) + nout*xbarout(0)/(nout+1), sd2(0)/pow(nout+1.0,0.5));
 
-std_sum.fill(0.0);
-for(int i=0; i<s;i++){
-	if(demean(i)<=rmat(i)){
-		std_sum = std_sum + pow(intensityobs(i)-mu1(0),2)/(2.0*pow(sd1(0),2));
-	}else{
-		std_sum = std_sum + pow(intensityobs(i)-mu2(0),2)/(2.0*pow(sd2(0),2));
-	}	
-}
+sdcomp = (intensityobs - (tmpp*mu1(0) + (1.0-tmpp)*mu2(0)))/(tmpp*sd1(0) + (1.0-tmpp)*sd2(0));
+std_sum = sdcomp.t()*sdcomp/2.0;
+
 
 gx0 = -1/2 * (sum(log(eigencnini)) + tauinirg * interim) + (alphalambda - 1) * log(lambdaini) - betalambda * lambdaini;
 lambdalist = unisliceL(lambdaini, gx0, i_J, tauinirg, anini,  alphalambda,  betalambda, lambdaini);
@@ -610,7 +588,7 @@ for(int k = 0; k<200; k++){
 }
 
 
-return Rcpp::List::create(Rcpp::Named("esttheta") = esttheta,Rcpp::Named("thetaplot") = thetaplot);
+return Rcpp::List::create(Rcpp::Named("esttheta") = esttheta,Rcpp::Named("thetaplot") = thetaplot, Rcpp::Named("anini") = anini, Rcpp::Named("ansum") = ansum);
 }')
 
 
@@ -619,7 +597,7 @@ return Rcpp::List::create(Rcpp::Named("esttheta") = esttheta,Rcpp::Named("thetap
 # and c++ only to produce boundary estimates for binary images.  We set the seed before
 # each example to use the same data, and we compute the runtime for comparison. 
 
-# Load this function.  This will be used to su=imulate image data.
+# Load this function.  This will be used to suimulate image data.
 
 parnormobs = function (m, mu.in, mu.out, sd.in, sd.out, design, gamma.fun) {
     center = c(0.5, 0.5)
@@ -656,11 +634,11 @@ obs = parnormobs(m = 100, mu.in = 4, mu.out = 1,sd.in = 1.5, sd.out = 1, design 
 rotate <- function(x) t(apply(x, 2, rev))  # rotate closewise by 90 degrees
 image(rotate(obs$intensity), axes = FALSE, asp = 1, main = 'observation')
 t1 = proc.time()
-rbinary = BayesBD.norm(obs, ini.mean = 0.4, n.run = 5000, n.burn = 1000, J = 10, output.all = FALSE) 
+exnormal = BayesBD.norm(obs, ini.mean = 0.4, n.run = 5000, n.burn = 1000, J = 10, output.all = FALSE) 
 t2 = proc.time()
 t2-t1
 theta.plot = seq(from = 0, to = 2*pi, length.out = 200)
-plot.val = rbinary$gamma.hat(theta.plot)
+plot.val = exnormal$gamma.hat(theta.plot)
 x.plot = plot.val*cos(theta.plot)+.5
 y.plot = plot.val*sin(theta.plot)+.5
 lines(x.plot, y.plot, lwd=2)
@@ -711,47 +689,13 @@ J = 10
     n.in <- sum(tmp)
     alpha1.ini = -log(s1.ini) 
 	alpha2.ini = - log(s2.ini)
-    beta.ini = -((2*((s1.ini)^2))^(-1))*sum(in.ini * ((obs$intensity-m1.ini)^2))-((2*((s2.ini)^2))^(-1))*sum((!in.ini) * ((obs$intensity-m2.ini)^2))
-    mh.step <- function(k, an, alpha1,alpha2, beta, eigen.cn, tau,n.in,m1, m2, s1, s2) {
-	  ret = list(an = an,n.in = n.in, beta = beta)
-        eigen.cn.ini = eigen.cn
-        an.old = matrix(an,L,1)
-	  an.new.k = rnorm(1,an.old[k],.1)
-	  an.new = an.old
-	  an.new[k,1] = an.new.k
-	  lL.old = n.in * alpha1-n.in*alpha2 + beta - t(an.old)%*%solve(diag(eigen.cn.ini))%*%an.old*tau.ini/2 
-	  r.mat = c(tmp.mat %*% an.new + mu)
-        tmp <- (obs$r.obs <= r.mat)
-        n.in.new <- sum(tmp)
-	  beta.ini = -((2*((s1)^2))^(-1))*sum(tmp * ((obs$intensity-m1)^2))-((2*((s2)^2))^(-1))*sum((!tmp) * ((obs$intensity-m2)^2))
-	  lL.new = n.in.new * alpha1-n.in.new*alpha2 + beta.ini - t(an.new)%*%solve(diag(eigen.cn.ini))%*%an.new*tau.ini/2
-        r = lL.new - lL.old + dnorm(an.new.k, an.old[k,1],.1) - dnorm(an.old[k,1],an.new.k ,.1)
-        R <- min(exp(r), 1)
-        if(runif(1) <= R) {
-       	ret = list(an = an.new,n.in = n.in.new, beta = beta.ini)
-        } 
-	  return(ret)
-    }
-
-    logL.lambda = function(tau, an) {
-        ret = function(lambda) {
-            cn = sapply(0:J, function(ith) 2 * pi * exp(-2 * 
-                lambda) * besselI(2 * lambda, ith))
-            eigen.cn = rep(cn, each = 2)[-1]
-            ret2 = -1/2 * (sum(log(eigen.cn)) + tau * sum(an^2/eigen.cn)) + 
-                (alpha.lambda - 1) * log(lambda) - beta.lambda * 
-                lambda
-            return(ret2)
-        }
-        return(ret)
-    }
-    start <- proc.time()
+    beta.ini = ((2*((s1.ini)^2))^(-1))*sum(in.ini * ((obs$intensity-m1.ini)^2))+((2*((s2.ini)^2))^(-1))*sum((!in.ini) * ((obs$intensity-m2.ini)^2))
+   
     for (ith in 1:n.run) {
-	k=1
         for (k in 1:L) {
-          		an.n.new = mh.step(k,an.ini, alpha1.ini,alpha2.ini, beta.ini, eigen.cn.ini, tau.ini,n.in, m1.ini, m2.ini, s1.ini, s2.ini)
-			n.in = an.n.new$n.in
-			an.ini = an.n.new$an
+          		an.n.new = mhstep(k-1,tmp.mat, mu, obs$intensity, obs$r.obs, an.ini, alpha1.ini, alpha2.ini, beta.ini, eigen.cn.ini, tau.ini, n.in, m1.ini, m2.ini, s1.ini, s2.ini)
+			n.in = an.n.new$nin
+			an.ini[k] = an.n.new$ank
 			beta.ini = an.n.new$beta
 	        }
 	  a.star = alpha.tau + L/2
@@ -779,9 +723,9 @@ J = 10
 	  m2.ini = x2
         alpha1.ini = -log(s1.ini) 
 	  alpha2.ini = - log(s2.ini)
-        beta.ini = -((2*((s1.ini)^2))^(-1))*sum(tmp * ((obs$intensity-m1.ini)^2))-((2*((s2.ini)^2))^(-1))*sum((!tmp) * ((obs$intensity-m2.ini)^2))
-        lambda.ini = uni.slice(lambda.ini, g = logL.lambda(tau = tau.ini, 
-            an = an.ini), lower = 0, upper = 100)
+        beta.ini = ((2*((s1.ini)^2))^(-1))*sum(tmp * ((obs$intensity-m1.ini)^2))+((2*((s2.ini)^2))^(-1))*sum((!tmp) * ((obs$intensity-m2.ini)^2))
+    	  gx0 = -1/2 * (sum(log(eigen.cn.ini)) + tau.ini * sum((an.ini^2)/eigen.cn.ini)) + (alpha.lambda - 1) * log(lambda.ini) - beta.lambda * lambda.ini
+	  lambda.ini = unisliceL(lambda.ini, gx0, J, tau.ini, an.ini,  alpha.lambda,  beta.lambda, lambda.ini)$x1
         an.smp[, ith] = an.ini
         par.smp[, ith] = c(m1.ini,m2.ini,s1.ini,s2.ini)
         lambda.smp[ith] = lambda.ini
@@ -816,18 +760,22 @@ gamma.fun = ellipse(a = 0.35, b = 0.25)
 obs = parnormobs(m = 100, mu.in = 4, mu.out = 1,sd.in = 1.5, sd.out = 1, design = 'J', gamma.fun)
 rotate <- function(x) t(apply(x, 2, rev))  # rotate closewise by 90 degrees
 image(rotate(obs$intensity), axes = FALSE, asp = 1, main = 'observation')
+# optionally, source functions from text file first...
+#sourceCpp("E:\\Research\\BayesBDCoding\\eigenfun.cpp")
+#sourceCpp("E:\\Research\\BayesBDCoding\\mhstep.cpp")
+#sourceCpp("E:\\Research\\BayesBDCoding\\unisliceL.cpp")
+#sourceCpp("E:\\Research\\BayesBDCoding\\BayesBDnormal.cpp")
 t1 = proc.time()
 cppsamp = BayesBDnormal(obs, .4, 4000, 1000, 10)
-cppsamp
 t2 = proc.time()
 t2-t1
 x = cppsamp$esttheta*cos(cppsamp$thetaplot)+.5
-y = cppsamp$esttheta*sin(cppsamp$thetaplot) +.5
+y = cppsamp$esttheta*sin(cppsamp$thetaplot)+.5
 lines(x,y, lty = 2, lwd = 3)
 
 # Runtime results: on an Intel Core i7-4790K CPU @ 4.00 GHz with 16 GB RAM running RGui 64-bit on Windows 10
 #                       user      system    elapsed
-#   c++ only            114.28   60.67  175.26    
-#   c++ within R loop   60.99    0.29   61.50  
-#   Only R              67.82    0.05   68.01 
+#   c++ only            111.36   59.92  179.69  
+#   c++ within R loop   133.92   25.70  159.83   
+#   Only R              60.81    0.06   60.99 
 
