@@ -100,7 +100,6 @@ BayesBD.norm = function (obs, ini.mean, n.run = 10000, n.burn = 1000,
         }
         return(ret)
     }
-    start <- proc.time()
     for (ith in 1:n.run) {
         for (k in 1:L) {
           		an.n.new = mh.step(k,an.ini, alpha1.ini,alpha2.ini, beta.ini,tmp.mat, eigen.cn.ini, tau.ini,n.in, m1.ini, m2.ini, s1.ini, s2.ini)
@@ -140,14 +139,8 @@ BayesBD.norm = function (obs, ini.mean, n.run = 10000, n.burn = 1000,
         par.smp[, ith] = c(m1.ini,m2.ini,s1.ini,s2.ini)
         lambda.smp[ith] = lambda.ini
         tau.smp[ith] = tau.ini
-        if (ith%%floor(n.run/100) == 1) {
-            duration = proc.time() - start
-           # cat(ith, "th iteration:", "ETA:", duration[3]/ith * 
-            #    (n.run - ith), "\n")
-        }
-    }
-    Total.Time = proc.time() - start
-    an.MC = apply(an.smp[, n.burn:n.run], 1, mean)
+          }
+       an.MC = apply(an.smp[, n.burn:n.run], 1, mean)
     gamma.MC <- function(theta.arg) {
         c(sapply(1:L, function(k) eigen.fun(k)(theta.arg)) %*% 
             an.MC + mu.fun(theta.arg))
@@ -494,10 +487,9 @@ arma::colvec tmpp             = arma::colvec(s); tmpp.fill(0.0);
 arma::colvec sdcomp           = arma::colvec(s); sdcomp.fill(0.0);
 arma::colvec gx0              = arma::colvec(1); gx0.fill(0.0);
 arma::colvec ansum		= arma::colvec(L); ansum.fill(0.0);
-
-
 arma::mat tmpmat              = arma::mat(s,L); tmpmat.fill(0.0);
 
+/*
 // Filling tmpmat with values for each of L eigenfunctions for each of s observations
 for (int i=0; i<s; i++) {
 	for(int j = 0; j<L;j++){
@@ -589,6 +581,8 @@ for(int k = 0; k<200; k++){
 
 
 return Rcpp::List::create(Rcpp::Named("esttheta") = esttheta,Rcpp::Named("thetaplot") = thetaplot, Rcpp::Named("anini") = anini, Rcpp::Named("ansum") = ansum);
+*/
+return(5);
 }')
 
 
@@ -754,7 +748,6 @@ lines(x.plot, y.plot, lwd=2)
 
 
 # Example 3: c++ only.  BayesBDnormal is used to run the entire sampling process within c++.
-
 set.seed(12345)
 gamma.fun = ellipse(a = 0.35, b = 0.25)
 obs = parnormobs(m = 100, mu.in = 4, mu.out = 1,sd.in = 1.5, sd.out = 1, design = 'J', gamma.fun)
@@ -766,7 +759,7 @@ image(rotate(obs$intensity), axes = FALSE, asp = 1, main = 'observation')
 #sourceCpp("E:\\Research\\BayesBDCoding\\unisliceL.cpp")
 #sourceCpp("E:\\Research\\BayesBDCoding\\BayesBDnormal.cpp")
 t1 = proc.time()
-cppsamp = BayesBDnormal(obs, .4, 4000, 1000, 10)
+cppsamp = BayesBDnormal(obs, .4, 1, 1, 10)
 t2 = proc.time()
 t2-t1
 x = cppsamp$esttheta*cos(cppsamp$thetaplot)+.5
@@ -774,8 +767,15 @@ y = cppsamp$esttheta*sin(cppsamp$thetaplot)+.5
 lines(x,y, lty = 2, lwd = 3)
 
 # Runtime results: on an Intel Core i7-4790K CPU @ 4.00 GHz with 16 GB RAM running RGui 64-bit on Windows 10
+# 100 x 100 obs
 #                       user      system    elapsed
-#   c++ only            111.36   59.92  179.69  
+#   c++ only            97.75   44.91  143.00 
 #   c++ within R loop   133.92   25.70  159.83   
-#   Only R              60.81    0.06   60.99 
+#   Only R              49.94    0.23   71.50 
+
+# 500 x 500 obs
+#                       user      system    elapsed
+#   c++ only            3063.55 2547.00 5786.48 
+#   c++ within R loop   2433.92 1562.63 4008.44  
+#   Only R              1898.65  440.14 2344.54 
 
