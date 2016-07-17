@@ -17,7 +17,9 @@
 #		2.  Load the libraries below.
 #		3.  Load the functions into your R session: BayesBD.norm, mhstep,
 #		    unisliceL, eigenfun, BayesBDnorm, and parnormobs.
-#		4.  Run the examples at the end of the code.  There are three examples
+#		4.  There are two versions of BayesBDnorm.  The first version uses only
+#		    slice sampling, and the second version uses MH for the 'z' parameter.
+#		5.  Run the examples at the end of the code.  There are three examples
 #		    comparing the runtime of R code, c++ within and R loop, and pure c++.
 #               Each code can be run using either slice or Metropolis-Hastings sampling
 #		    for the updates to eigenfunction coefficients.
@@ -213,9 +215,8 @@ return(list(mean = mean, x = x1, y = y1, lx = lx1, ly = ly1, ux = ux1, uy = uy1)
 
 # This is a c++ function which can be used with the Rcpp package to produce posterior
 # samples of the 'z' parameter; see Step 2 and its modifications in Section 5: Sampling 
-# Algorithms in Li and Ghosal 2015 for details.  This function is used by another c++
-# function, BayesBDnorm, below to loop the posterior sampling process. This version
-# does MCMC sampling using Metropolis Hastings within Gibbs
+# Algorithms in Li and Ghosal 2015 for details.  This version does MCMC sampling using 
+# Metropolis Hastings within Gibbs
 
 
 cppFunction(depends = "RcppArmadillo",'Rcpp::List mhstep(int & k, double & gxZ, arma::mat & tmpmat, arma::colvec & mu,arma::colvec & intensityobs,arma::colvec & demean, arma::colvec & an, double & alpha1, double & alpha2, arma::colvec & eigencn, double & tau, int & nin, double & mu1, double & mu2, double & sd1, double & sd2){
@@ -253,6 +254,10 @@ RNGScope scope;
 	}
 }') 
 
+# This is a c++ function which can be used with the Rcpp package to produce posterior
+# samples of the 'z' parameter; see Step 2 and its modifications in Section 5: Sampling 
+# Algorithms in Li and Ghosal 2015 for details.  This function does slice sampling; 
+# compare with the uni.slice function. 
 
 cppFunction(depends = "RcppArmadillo",'Rcpp::List unisliceZ(int & k, arma::colvec & gxZ, arma::mat & tmpmat, arma::colvec & mu,arma::colvec & intensityobs,arma::colvec & demean, arma::colvec & an, arma::colvec & alpha1, arma::colvec & alpha2, arma::colvec & eigencn, arma::colvec & tau, arma::colvec & nin, arma::colvec & mu1, arma::colvec & mu2, arma::colvec & sd1, arma::colvec & sd2){
 RNGScope scope;
@@ -379,9 +384,8 @@ while( res1 ){
 
 
 # This is a c++ function which can be used with the Rcpp package to produce posterior
-# samples of the 'a' parameter; see Step 5 in Section 5: Sampling Algorithms in Li and Ghosal 2015 for 
-# details.  This function is used by another c++ function, BayesBDnorm, below to loop
-# the posterior sampling process.
+# samples of the 'a' parameter using slice sampling; see Step 5 in Section 5: Sampling 
+# Algorithms in Li and Ghosal 2015 for details.  
 
 cppFunction(depends = "RcppArmadillo",'Rcpp::List unisliceL(arma::colvec & x0, arma::colvec & gx0, int & i_J, arma::colvec & tauini, arma::colvec & anini, int & alphalambda, int & betalambda, arma::colvec & lambdaini){
 RNGScope scope;
@@ -505,8 +509,7 @@ while( res1 ){
 
 
 # This c++ function computes the nth eigenfunction of the SEP kernel.  It is used by
-# BayesBDnormal below.
-
+# BayesBDnormal below and in sampling.
 
 cppFunction('double eigenfun(int & n, double & x) { 
 	int k1 = n%2;
@@ -528,7 +531,9 @@ cppFunction('double eigenfun(int & n, double & x) {
 
 # This c++ function is a translation to c++ of the BayesBD.norm R function above.  It
 # produces posterior samples of the boundary of a Gaussian image.  The output is a set of
-# boundary values at 200 points, to be plotted on the image. 
+# boundary values at 200 points, to be plotted on the image. This version uses slice
+# sampling for the 'z' parameter (the coefficients of eigenfunctions), but another
+# version below is set up for MH sampling.
 
 cppFunction(depends = "RcppArmadillo",'Rcpp::List BayesBDnormal(SEXP obs, SEXP inimean, SEXP nrun, SEXP nburn, SEXP J) { 
 
@@ -536,42 +541,35 @@ cppFunction(depends = "RcppArmadillo",'Rcpp::List BayesBDnormal(SEXP obs, SEXP i
 RNGScope scp;
 Rcpp::Function eigenfun("eigenfun");
 Rcpp::Function besselI("besselI");
-//Rcpp::Function unisliceZ("unisliceZ"); /*use this for slice sampling and line below for MH sampling*/
-//Rcpp::Function mhstep("mhstep");
-Rcpp::Function unisliceL("unisliceL");
+
 
 // Extracting the inputs
-Rcpp::List 		      	obsL(obs);
-arma::mat thetaobs 	 	= Rcpp::as<arma::mat>(obsL["theta.obs"]);
-arma::colvec demean 	 	= Rcpp::as<arma::colvec>(obsL["r.obs"]);
-arma::colvec intensityobs     = Rcpp::as<arma::colvec>(obsL["intensity"]);
-int i_nrun 				= Rcpp::as<int>(nrun);
-int i_nburn				= Rcpp::as<int>(nburn);
-int i_J				= Rcpp::as<int>(J);
-double d_inimean 			= Rcpp::as<double>(inimean);
+Rcpp::List 		      	obsL(obs);								// the observed (or simulated) data
+arma::mat thetaobs 	 	= Rcpp::as<arma::mat>(obsL["theta.obs"]);			// angle in polar coords of datapoints
+arma::colvec demean 	 	= Rcpp::as<arma::colvec>(obsL["r.obs"]);			// radius in polar coords of datapoints
+arma::colvec intensityobs     = Rcpp::as<arma::colvec>(obsL["intensity"]);		// image intensity of datapoints
+int i_nrun 				= Rcpp::as<int>(nrun);						// number of posterior samples to be retained
+int i_nburn				= Rcpp::as<int>(nburn);						// number of posterior samples to be burned
+int i_J				= Rcpp::as<int>(J);						// 2*J+1 is number of eigenfunctions to use in basis expansion of image boundary
+double d_inimean 			= Rcpp::as<double>(inimean);					// radius of a circle used for initial value of image boundary
 
 // Declaring variables 
-Rcpp::List temp2del;
-Rcpp::List lambdalist;
-
-int s					= thetaobs.size();
-int L                  		= 2*i_J+1;
-int betatau           		= 1;
-int alphalambda      		= 2;
+int s					= thetaobs.size();						// number of datapoints, observations						
+int L                  		= 2*i_J+1;								// 2*J+1 is number of eigenfunctions to use in basis expansion of image boundary
+int betatau           		= 1;									// hyperparameter for updating tau
+int alphalambda      		= 2;									// hyperparameters for updataing lambda
 int betalambda       		= 1;
-int nin = 0;
-int nout = 0;
+int nin = 0;												// count of the number of datapoints inside the image boundary
+int nout = 0;												// count of the number of datapoints outside the image boundary
 
 
-arma::colvec tmpmatk		= arma::colvec(s); tmpmatk.fill(0.0);
-arma::colvec mu			= arma::colvec(s); mu.fill(d_inimean);
+arma::colvec mu			= arma::colvec(s); mu.fill(d_inimean);			// vector with initial guess of image boundary (just a circle of radius d_inimean)
 arma::colvec diffini          = demean - mu;
-arma::colvec eigencnk   	= arma::colvec(1); eigencnk.fill(0.0);
-arma::colvec ank   	      = arma::colvec(1); ank.fill(0.0); 
-arma::colvec astar   	      = arma::colvec(1); astar(0)=0.0;
+arma::colvec ank   	      = arma::colvec(1); ank.fill(0.0); 				
+arma::colvec astar   	      = arma::colvec(1); astar(0)=0.0;				// hyperparameters for sampling tauinirg
 arma::colvec bstar   	      = arma::colvec(1); bstar(0)=0.0;
-arma::colvec tauinirg   	= arma::colvec(1); tauinirg(0)=500.0;
-arma::colvec mu0 		      = arma::colvec(1); mu0 = sum(intensityobs)/s;
+arma::colvec tauinirg   	= arma::colvec(1); tauinirg(0)=500.0;			// tau parameter from Li and Ghosal
+arma::colvec mu0 		      = arma::colvec(1); mu0 = sum(intensityobs)/s;		// Next several parameters all relate to calculation of mu1, mu2, sd1, sd2, the parameters of the Gaussian likelihoods for intensities within and without the image boundary
 arma::colvec sd0 		      = arma::colvec(1); sd0.fill(1000.0);
 arma::colvec mu1 		      = arma::colvec(1); mu1(0) = mu0(0);
 arma::colvec mu2 		      = arma::colvec(1); mu2(0) = mu0(0);
@@ -585,23 +583,465 @@ arma::colvec xinsumsq 		= arma::colvec(1); xinsumsq.fill(0.0);
 arma::colvec xoutsumsq 		= arma::colvec(1); xoutsumsq.fill(0.0);
 arma::colvec ssin 		= arma::colvec(1); ssin.fill(0.0);
 arma::colvec ssout 		= arma::colvec(1); ssout.fill(0.0);
-arma::colvec calc1 		= arma::colvec(1); calc1.fill(0.0);
-arma::colvec std_sum 		= arma::colvec(1); std_sum.fill(0.0);
-arma::colvec lambdaini 		= arma::colvec(1); lambdaini(0)=1.0;
-arma::colvec anini 		= arma::colvec(L); anini.fill(0.0);
-arma::colvec cnini            = arma::colvec(i_J+1); cnini.fill(0.0);
-arma::colvec eigencnini       = arma::colvec(L); eigencnini.fill(0.0);
-arma::colvec interim          = arma::colvec(1); interim.fill(0.0);
-arma::colvec rmat             = arma::colvec(s); rmat.fill(0.0);
-arma::colvec tmpp             = arma::colvec(s); tmpp.fill(0.0);
-arma::colvec sdcomp           = arma::colvec(s); sdcomp.fill(0.0);
-arma::colvec gx0              = arma::colvec(1); gx0.fill(0.0);
-arma::colvec gxZ              = arma::colvec(1); gxZ.fill(0.0);
-arma::colvec ansum		= arma::colvec(L); ansum.fill(0.0);
-arma::mat tmpmat              = arma::mat(s,L); tmpmat.fill(0.0);
+arma::colvec calc1 		= arma::colvec(1); calc1.fill(0.0);				// intermediary calculation of Bessel functions for eigencnini
+arma::colvec std_sum          = arma::colvec(1); std_sum.fill(0.0);                 
+arma::colvec lambdaini        = arma::colvec(1); lambdaini(0) = 1.0;                // the a parameter, see Section 5: Sampling Algorithms in Li and Ghosal 2015 for details
+arma::colvec anini 		= arma::colvec(L); anini.fill(0.0);				// the z parameter (eigenfunction coefficients); see Section 5: Sampling Algorithms in Li and Ghosal 2015 for details
+arma::colvec cnini            = arma::colvec(i_J+1); cnini.fill(0.0);			// computation of eigencnini
+arma::colvec eigencnini       = arma::colvec(L); eigencnini.fill(0.0);			// computation of Bessel functions
+arma::colvec interim          = arma::colvec(1); interim.fill(0.0);			// intermediary calculation for gx0
+arma::colvec rmat             = arma::colvec(s); rmat.fill(0.0);				// matrix of radii at each observed datapoint for an estimate of image boundary
+arma::colvec tmpp             = arma::colvec(s); tmpp.fill(0.0);				// used to count nin and nout
+arma::colvec sdcomp           = arma::colvec(s); sdcomp.fill(0.0);			// computation of gxZ
+arma::colvec gx0              = arma::colvec(1); gx0.fill(0.0);				// loglikelihood of lambdaini parameter
+arma::colvec gxZ              = arma::colvec(1); gxZ.fill(0.0);				// loglikelihood of eigenfunction coefficients, z parameter, called anini
+arma::colvec ansum		= arma::colvec(L); ansum.fill(0.0);				// averaging the eigenfunction coefficients (anini) over posterior samples
+arma::mat tmpmat              = arma::mat(s,L); tmpmat.fill(0.0);				// Fixed matrix of eigenfunction values at each datapoint location
+
+Rcpp::NumericVector thetaplot = Rcpp::NumericVector( Rcpp::Dimension(200));		// variables to output the posterior mean image boundary
+for(int k = 0; k<200; k++){
+ thetaplot[k] = 2.0*M_PI*(k*0.005); 
+}
+Rcpp::NumericVector estfunc   = Rcpp::NumericVector( Rcpp::Dimension(1));
+Rcpp::NumericVector esttheta  = Rcpp::NumericVector( Rcpp::Dimension(200));
+
+Rcpp::NumericVector rndsmp    = Rcpp::NumericVector( Rcpp::Dimension(1)); 		// variables for slice sampling of z (anini) and a (lambdaini)
+arma::colvec logy             = arma::colvec(1); 
+arma::colvec LL               = arma::colvec(1); 
+arma::colvec R                = arma::colvec(1); 
+arma::colvec x1               = arma::colvec(1);
+arma::colvec g                = arma::colvec(1); 
+arma::colvec gxF              = arma::colvec(1); 
+arma::colvec count            = arma::colvec(1); 
+int ninnew                    = 0; 
+arma::colvec annew; 
+bool res1                     = TRUE;
+bool res2                     = FALSE;
+bool res3                     = FALSE;
 
 
-// Filling tmpmat with values for each of L eigenfunctions for each of s observations
+// Filling tmpmat with values for each of L eigenfunctions for each of s obs
+for (int i=0; i<s; i++) {
+	for(int j = 0; j<L;j++){
+            tmpmat(i,j) = Rcpp::as<double>(eigenfun(j+1,thetaobs[i]));
+	}
+}
+
+
+calc1 = 2.0*M_PI*exp(-2*lambdaini);
+for(int i=0; i<(i_J+1); i++){
+	cnini(i) = calc1(0)*Rcpp::as<double>(besselI(2.0*lambdaini,i));
+}
+
+eigencnini(0) = cnini(0);
+for(int i=1; i<(i_J+1); i++){
+	eigencnini(2*i-1) = cnini(i);
+	eigencnini(2*i) = cnini(i);
+} 
+
+for(int i = 0; i<s; i++){
+	if(diffini(i)<0){
+		tmpp(i) = 1;
+	}else{tmpp(i)=0;}
+}
+
+nin = sum(tmpp);
+nout = s - nin;
+
+mu1 = tmpp.t()*intensityobs/nin; mu2 = intensityobs.t()*(1.0-tmpp)/nout;
+ssin = trans(intensityobs % tmpp - mu1(0)* tmpp)*(intensityobs % tmpp - mu1(0)* tmpp);
+ssout = trans(intensityobs % (1.0-tmpp) - mu2(0)* (1.0-tmpp))*(intensityobs % (1.0-tmpp) - mu2(0)* (1.0-tmpp));
+sd1 = pow(ssin/(nin-1), 0.5);
+sd2 = pow(ssout/(nout-1), 0.5);
+
+sdcomp = (intensityobs - (tmpp*mu1(0) + (1.0-tmpp)*mu2(0)))/(tmpp*sd1(0) + (1.0-tmpp)*sd2(0));
+std_sum = -sdcomp.t()*sdcomp*0.5;
+gxZ = nin * (-log(sd1(0)))-nin*(-log(sd2(0))) + std_sum - anini.t()*diagmat(1.0/eigencnini)*anini*tauinirg*0.5;
+
+//main loop for posterior sampling
+for(int i=0; i<(i_nrun+i_nburn); i++){
+for(int k=0; k<L; k++){
+	
+	// reset values of variables used in slice sampling of z
+	rndsmp = rexp(1);
+	logy(0) = gxZ(0) - rndsmp[0];
+	rndsmp = runif(1, 0, 1.0);
+	LL(0) = anini(k) - rndsmp[0];
+	R(0) = LL(0) + 1.0;
+	x1(0)=0.0;
+	g(0)=0.0;
+	gxF(0)=0.0;
+	count(0)=-1.0;
+	ninnew = 0; 
+	annew = anini; 
+	res1 = TRUE;
+	res2 = FALSE;
+	res3 = FALSE;
+	tmpp.fill(0.0);
+
+	// slice sampling of kth element of z parameter anini
+	while( res1 ){
+            count = count+1.0;
+		res1 =  count(0) < 200.0 ;
+	      res2 = LL(0)<=-10.0;
+            if (res2){ 
+			LL(0) = LL(0)+1.0;
+			res1= FALSE;}
+		else {
+			annew(k) = LL(0);
+			rmat = tmpmat*annew + mu;
+			for(int i = 0; i<s; i++){
+				if(demean(i)<rmat(i)){
+					tmpp(i) = 1;}
+				else{tmpp(i)=0;}
+			}			
+			sdcomp = (intensityobs - (tmpp*mu1(0) + (1.0-tmpp)*mu2(0)))/(tmpp*sd1(0) + (1.0-tmpp)*sd2(0));
+			std_sum = -sdcomp.t()*sdcomp/2.0;
+			ninnew = sum(tmpp);
+			g = ninnew * (-log(sd1))-ninnew*(-log(sd2)) + std_sum - annew.t()*diagmat(1.0/eigencnini)*annew*tauinirg*0.5;
+			res3 = g(0) <= logy(0);
+		}
+            if (res3){ 
+			LL(0) = LL(0)+1.0;
+			res1=FALSE;}
+            LL(0) = LL(0) - 1.0;
+            }
+		count = -1.0;
+		res1 = TRUE;res2 = FALSE;res3 = FALSE;
+       while( res1 ){
+            count = count+1.0;
+		res1 =  count(0) < 200.0 ;
+		res2 = R(0)>=10.0;
+            if (res2){ 
+			R(0) = R(0)-1.0;
+			res1= FALSE;}
+		else {
+			annew(k) = R(0);
+			rmat = tmpmat*annew + mu;
+			for(int i = 0; i<s; i++){
+				if(demean(i)<rmat(i)){
+					tmpp(i) = 1;}else{tmpp(i)=0;}
+			}
+			sdcomp = (intensityobs - (tmpp*mu1(0) + (1.0-tmpp)*mu2(0)))/(tmpp*sd1(0) + (1.0-tmpp)*sd2(0));
+			std_sum = -sdcomp.t()*sdcomp/2.0;
+			ninnew = sum(tmpp);
+			g = ninnew * (-log(sd1))-ninnew*(-log(sd2)) + std_sum - annew.t()*diagmat(1.0/eigencnini)*annew*tauinirg*0.5;
+			res3 = g(0) <= logy(0);
+		}
+            if (res3){ 
+			R(0) = R(0)-1.0;
+			res1=FALSE;}
+            R(0) = R(0) + 1.0;
+            }
+		
+	res1 = LL(0)<=-10.0;
+      if (res1) {
+           LL(0) = -10.0;
+      }
+	res1 = R(0)>10.0;
+      if (res1) {
+           R(0) = 10.0;
+      }
+	count = -1.0;
+	res1 = TRUE;res2 = FALSE;res3 = FALSE;
+      while(res1) {
+		count=count+1;
+		if (count(0) > 200.0){
+		res1 = FALSE;
+		gxF = gxZ;
+		x1 = anini(k);}
+		else{
+       	if (res2){ 
+			gxF = g;
+			res1 = FALSE;
+			}
+		else {
+			x1 = runif(1, LL(0), R(0));
+			annew(k) = x1(0);
+			rmat = tmpmat*annew + mu;
+			for(int i = 0; i<s; i++){
+				if(demean(i)<rmat(i)){
+					tmpp(i) = 1;}else{tmpp(i)=0;}
+			}
+			sdcomp = (intensityobs - (tmpp*mu1(0) + (1.0-tmpp)*mu2(0)))/(tmpp*sd1(0) + (1.0-tmpp)*sd2(0));
+			std_sum = -sdcomp.t()*sdcomp/2.0;
+			ninnew = sum(tmpp);
+			g = ninnew * (-log(sd1))-ninnew*(-log(sd2)) + std_sum - annew.t()*diagmat(1.0/eigencnini)*annew*tauinirg*0.5;
+			res3 = (x1(0) > anini(k));
+		}
+	  	  	res2 = (g(0) >= logy(0));
+        if (res3) {
+            R(0) = x1(0);
+        }
+        else {
+            LL(0) = x1(0);
+        }}
+      }  
+ 	anini(k) = x1(0);											// new sample of kth element of z parameter (anini)
+	nin = ninnew;											// new value of number of datapoints inside image boundary
+	gxZ = gxF;												// new loglikelihood value
+	
+	} 													// end of slice sampling of all elements of z parameter anini for this sweep
+
+astar = lambdaini + L/2;
+interim = anini.t()*(anini / eigencnini);
+bstar = betatau + interim*0.5;
+tauinirg = rgamma(1,astar(0),bstar(0));								// sampling the tau parameter
+rmat = tmpmat*anini + mu;										// calculating new values of nin and nout for new z (anini) sample.  Also, sampling new values of mu1, mu2, sd1, sd2.
+for(int j = 0; j< s; j++){
+	if(demean(j)<=rmat(j)){tmpp(j)=1.0;}
+	else{tmpp(j)=0.0;}
+}
+nin = sum(tmpp); nout = s - nin;
+xbarin = tmpp.t()*intensityobs/nin; xbarout = intensityobs.t()*(1.0-tmpp)/nout;
+ssin = trans(intensityobs % tmpp - xbarin(0)* tmpp)*(intensityobs % tmpp - xbarin(0)* tmpp);
+ssout = trans(intensityobs % (1.0-tmpp) - xbarout(0)* (1.0-tmpp))*(intensityobs % (1.0-tmpp) - xbarout(0)* (1.0-tmpp));
+sd1 = pow(1/rgamma(1, 0.01 + nin*0.5, 1/(0.01+0.5*ssin(0) + (nin/(nin+1))*(pow(xbarin(0) - mu0(0),2.0)*0.5))),0.5);
+sd2 = pow(1/rgamma(1, 0.01 + nout*0.5, 1/(0.01+0.5*ssout(0) + (nout/(nout+1))*(pow(xbarout(0) - mu0(0),2.0)*0.5))),0.5);
+mu1 = rnorm(1,mu0(0)/(nin+1) + nin*xbarin(0)/(nin+1), sd1(0)/pow(nin+1.0,0.5));
+mu2 = rnorm(1,mu0(0)/(nout+1) + nout*xbarout(0)/(nout+1), sd2(0)/pow(nout+1.0,0.5));
+sdcomp = (intensityobs - (tmpp*mu1(0) + (1.0-tmpp)*mu2(0)))/(tmpp*sd1(0) + (1.0-tmpp)*sd2(0));
+std_sum = -sdcomp.t()*sdcomp*0.5;
+
+
+
+gx0 = -0.5 * (sum(log(eigencnini)) + tauinirg * interim) + (alphalambda - 1) * log(lambdaini) - betalambda * lambdaini;
+rndsmp = rexp(1);												// resetting values of variables to be used in slice sampling of a parameters (lambdaini) 
+logy(0) = gx0(0) - rndsmp[0];
+rndsmp = runif(1, 0, 1.0);
+LL(0) = lambdaini(0) - rndsmp[0];
+R(0) = LL(0) + 1.0;
+x1(0)=0.0;
+g(0)=0.0;
+count(0)=0.0;
+interim(0) = 0.0;
+calc1(0) = 0.0;
+res1 = TRUE;
+res2 = FALSE;
+res3 = FALSE;
+
+while( res1 ){												// begin slice sampling of a
+		interim(0)=0.0;
+            count = count+1.0;
+		res1 =  count(0) < 100.0 ;
+	      res2 = LL(0)<=0.0;
+            if (res2){ 
+			LL(0) = LL(0)+1.0;
+			res1= FALSE;}
+		else {
+			calc1 = 2*M_PI*exp(-2*L);
+			for(int i=0; i<(i_J+1); i++){
+				cnini(i) = calc1(0)*Rcpp::as<double>(besselI(2*LL,i));
+			}
+			eigencnini(0) = cnini(0);
+			for(int i=1; i<(i_J+1); i++){
+				eigencnini(2*i-1) = cnini(i);
+				eigencnini(2*i) = cnini(i);
+			} 
+			interim = anini.t()*(anini / eigencnini);
+			g = -0.5 * (sum(log(eigencnini)) + tauinirg * interim) + (alphalambda - 1) * log(LL) - betalambda * LL;
+			res3 = g(0) <= logy(0);
+		}
+            if (res3){ 
+			LL(0) = LL(0)+1.0;
+			res1=FALSE;}
+            LL(0) = LL(0) - 1.0;
+            }
+		count = 0.0;
+		res1 = TRUE;res2 = FALSE;res3 = FALSE;
+       while( res1 ){
+		interim(0)=0.0;
+            count = count+1.0;
+		res1 =  count(0) < 100.0 ;
+		res2 = R(0)>=500.0;
+            if (res2){ 
+			R(0) = R(0)-1.0;
+			res1= FALSE;}
+		else {
+			calc1 = 2*M_PI*exp(-2*R);
+			for(int i=0; i<(i_J+1); i++){
+				cnini(i) = calc1(0)*Rcpp::as<double>(besselI(2*R,i));
+			}
+			eigencnini(0) = cnini(0);
+			for(int i=1; i<(i_J+1); i++){
+				eigencnini(2*i-1) = cnini(i);
+				eigencnini(2*i) = cnini(i);
+			}
+			interim = anini.t()*(anini / eigencnini);
+			g = -0.5 * (sum(log(eigencnini)) + tauinirg * interim) + (alphalambda - 1) * log(R) - betalambda * R;
+			res3 = (g(0) <= logy(0));
+		}
+            if (res3){ 
+			R(0) = R(0)-1.0;
+			res1=FALSE;}
+            R(0) = R(0) + 1.0;
+            }
+		
+	res1 = LL(0)<=0.0;
+    if (res1) {
+        LL(0) = 0.0;
+    }
+	res1 = R(0)>500.0;
+    if (res1) {
+        R(0) = 500.0;
+    }
+	count = 0.0;
+	res1 = TRUE;res2 = FALSE;res3 = FALSE;
+    while(res1) {
+		interim(0)=0.0;
+		count=count+1;
+		res1 =  count(0) < 200.0  ;
+       	if (res2){ 
+			res1 = FALSE;
+			}
+		else {
+			x1 = runif(1, LL(0), R(0));
+			calc1 = 2*M_PI*exp(-2*x1);
+			for(int i=0; i<(i_J+1); i++){
+				cnini(i) = calc1(0)*Rcpp::as<double>(besselI(2*x1,i));
+			}
+			eigencnini(0) = cnini(0);
+			for(int i=1; i<(i_J+1); i++){
+				eigencnini(2*i-1) = cnini(i);
+				eigencnini(2*i) = cnini(i);
+			}
+			interim = anini.t()*(anini / eigencnini);
+			g = -0.5 * (sum(log(eigencnini)) + tauinirg * interim) + (alphalambda - 1) * log(x1) - betalambda * x1;
+			res3 = (x1(0) > lambdaini(0));
+		}
+	  	  	res2 = (g(0) >= logy(0));
+        if (res3) {
+            R(0) = x1(0);
+        }
+        else {
+            LL(0) = x1(0);
+        }
+    }  
+
+lambdaini = x1;												// end of slice sampling of a and taking on new sample
+
+
+
+														// loglikelihood calculation for z using new sample of a
+gxZ = nin * (-log(sd1(0)))-nin*(-log(sd2(0))) + std_sum - anini.t()*(anini / eigencnini)*tauinirg*0.5;
+
+if(i > i_nburn){												// keep only the samples that we do not burn
+ansum = ansum + anini;
+}
+
+}														// end of MCMC sampling
+
+ansum = ansum/i_nrun;											// compute the output, the posterior mean image boundary
+for(int k = 0; k<200; k++){
+		estfunc[0]=0.0;
+  		for(int j = 0; j<L; j++){
+			estfunc[0] = estfunc[0] + Rcpp::as<double>(eigenfun(j+1,thetaplot[k]))*ansum(j)+(d_inimean/L);
+		}
+		esttheta[k] =estfunc[0]+esttheta[k];
+}
+
+
+return Rcpp::List::create(Rcpp::Named("esttheta") = esttheta,Rcpp::Named("thetaplot") = thetaplot);
+}')
+
+
+# This c++ function is a translation to c++ of the BayesBD.norm R function above.  It
+# produces posterior samples of the boundary of a Gaussian image.  The output is a set of
+# boundary values at 200 points, to be plotted on the image. This version uses MH
+# sampling for the 'z' parameter (the coefficients of eigenfunctions).
+
+cppFunction(depends = "RcppArmadillo",'Rcpp::List BayesBDnormal(SEXP obs, SEXP inimean, SEXP nrun, SEXP nburn, SEXP J) { 
+
+// Including additional user-defined Rcpp functions
+RNGScope scp;
+Rcpp::Function eigenfun("eigenfun");
+Rcpp::Function besselI("besselI");
+
+
+// Extracting the inputs
+Rcpp::List 		      	obsL(obs);								// the observed (or simulated) data
+arma::mat thetaobs 	 	= Rcpp::as<arma::mat>(obsL["theta.obs"]);			// angle in polar coords of datapoints
+arma::colvec demean 	 	= Rcpp::as<arma::colvec>(obsL["r.obs"]);			// radius in polar coords of datapoints
+arma::colvec intensityobs     = Rcpp::as<arma::colvec>(obsL["intensity"]);		// image intensity of datapoints
+int i_nrun 				= Rcpp::as<int>(nrun);						// number of posterior samples to be retained
+int i_nburn				= Rcpp::as<int>(nburn);						// number of posterior samples to be burned
+int i_J				= Rcpp::as<int>(J);						// 2*J+1 is number of eigenfunctions to use in basis expansion of image boundary
+double d_inimean 			= Rcpp::as<double>(inimean);					// radius of a circle used for initial value of image boundary
+
+// Declaring variables 
+int s					= thetaobs.size();						// number of datapoints, observations						
+int L                  		= 2*i_J+1;								// 2*J+1 is number of eigenfunctions to use in basis expansion of image boundary
+int betatau           		= 1;									// hyperparameter for updating tau
+int alphalambda      		= 2;									// hyperparameters for updataing lambda
+int betalambda       		= 1;
+int nin = 0;												// count of the number of datapoints inside the image boundary
+int nout = 0;												// count of the number of datapoints outside the image boundary
+
+
+arma::colvec mu			= arma::colvec(s); mu.fill(d_inimean);			// vector with initial guess of image boundary (just a circle of radius d_inimean)
+arma::colvec diffini          = demean - mu;
+arma::colvec ank   	      = arma::colvec(1); ank.fill(0.0); 				
+arma::colvec astar   	      = arma::colvec(1); astar(0)=0.0;				// hyperparameters for sampling tauinirg
+arma::colvec bstar   	      = arma::colvec(1); bstar(0)=0.0;
+arma::colvec tauinirg   	= arma::colvec(1); tauinirg(0)=500.0;			// tau parameter from Li and Ghosal
+arma::colvec mu0 		      = arma::colvec(1); mu0 = sum(intensityobs)/s;		// Next several parameters all relate to calculation of mu1, mu2, sd1, sd2, the parameters of the Gaussian likelihoods for intensities within and without the image boundary
+arma::colvec sd0 		      = arma::colvec(1); sd0.fill(1000.0);
+arma::colvec mu1 		      = arma::colvec(1); mu1(0) = mu0(0);
+arma::colvec mu2 		      = arma::colvec(1); mu2(0) = mu0(0);
+arma::colvec sd1 		      = arma::colvec(1); sd1(0) = sd0(0);
+arma::colvec sd2 		      = arma::colvec(1); sd2(0) = sd0(0);
+arma::colvec xbarin 		= arma::colvec(1); xbarin.fill(0.0);
+arma::colvec xbarout 		= arma::colvec(1); xbarout.fill(0.0);
+arma::colvec xinsum 		= arma::colvec(1); xinsum.fill(0.0);
+arma::colvec xoutsum 		= arma::colvec(1); xoutsum.fill(0.0);
+arma::colvec xinsumsq 		= arma::colvec(1); xinsumsq.fill(0.0);
+arma::colvec xoutsumsq 		= arma::colvec(1); xoutsumsq.fill(0.0);
+arma::colvec ssin 		= arma::colvec(1); ssin.fill(0.0);
+arma::colvec ssout 		= arma::colvec(1); ssout.fill(0.0);
+arma::colvec calc1 		= arma::colvec(1); calc1.fill(0.0);				// intermediary calculation of Bessel functions for eigencnini
+arma::colvec std_sum 		= arma::colvec(1); std_sum.fill(0.0);			// computation of gxZ
+arma::colvec lambdaini 		= arma::colvec(1); lambdaini(0)=1.0;			// the a parameter; see Section 5: Sampling Algorithms in Li and Ghosal 2015 for details
+arma::colvec anini 		= arma::colvec(L); anini.fill(0.0);				// the z parameter (eigenfunction coefficients); see Section 5: Sampling Algorithms in Li and Ghosal 2015 for details
+arma::colvec cnini            = arma::colvec(i_J+1); cnini.fill(0.0);			// computation of eigencnini
+arma::colvec eigencnini       = arma::colvec(L); eigencnini.fill(0.0);			// computation of Bessel functions
+arma::colvec interim          = arma::colvec(1); interim.fill(0.0);			// intermediary calculation for gx0
+arma::colvec rmat             = arma::colvec(s); rmat.fill(0.0);				// matrix of radii at each observed datapoint for an estimate of image boundary
+arma::colvec tmpp             = arma::colvec(s); tmpp.fill(0.0);				// used to count nin and nout
+arma::colvec sdcomp           = arma::colvec(s); sdcomp.fill(0.0);			// computation of gxZ
+arma::colvec gx0              = arma::colvec(1); gx0.fill(0.0);				// loglikelihood of lambdaini parameter
+arma::colvec gxZ              = arma::colvec(1); gxZ.fill(0.0);				// loglikelihood of eigenfunction coefficients, z parameter, called anini
+arma::colvec ansum		= arma::colvec(L); ansum.fill(0.0);				// averaging the eigenfunction coefficients (anini) over posterior samples
+arma::mat tmpmat              = arma::mat(s,L); tmpmat.fill(0.0);				// Fixed matrix of eigenfunction values at each datapoint location
+
+Rcpp::NumericVector thetaplot = Rcpp::NumericVector( Rcpp::Dimension(200));		// variables to output the posterior mean image boundary
+for(int k = 0; k<200; k++){
+ thetaplot[k] = 2.0*M_PI*(k*0.005); 
+}
+Rcpp::NumericVector estfunc   = Rcpp::NumericVector( Rcpp::Dimension(1));
+Rcpp::NumericVector esttheta  = Rcpp::NumericVector( Rcpp::Dimension(200));
+
+NumericVector ankk;											// variables for MH sampling of z (anini)
+NumericVector anok; 
+arma::colvec lLnew = arma::colvec(1); 
+int ninnew = 0; 
+arma::colvec r = arma::colvec(1); 
+arma::colvec uu = arma::colvec(1);  
+arma::colvec annew; 
+
+Rcpp::NumericVector rndsmp    = Rcpp::NumericVector( Rcpp::Dimension(1)); 		// variables for slice sampling a (lambdaini)
+arma::colvec logy             = arma::colvec(1); 
+arma::colvec LL               = arma::colvec(1); 
+arma::colvec R                = arma::colvec(1); 
+arma::colvec x1               = arma::colvec(1);
+arma::colvec g                = arma::colvec(1); 
+arma::colvec gxF              = arma::colvec(1); 
+arma::colvec count            = arma::colvec(1); 
+bool res1                     = TRUE;
+bool res2                     = FALSE;
+bool res3                     = FALSE;
+
+
+// Filling tmpmat with values for each of L eigenfunctions for each of s obs
 for (int i=0; i<s; i++) {
 	for(int j = 0; j<L;j++){
             tmpmat(i,j) = Rcpp::as<double>(eigenfun(j+1,thetaobs[i]));
@@ -639,45 +1079,11 @@ sdcomp = (intensityobs - (tmpp*mu1(0) + (1.0-tmpp)*mu2(0)))/(tmpp*sd1(0) + (1.0-
 std_sum = -sdcomp.t()*sdcomp*0.5;
 gxZ = nin * (-log(sd1(0)))-nin*(-log(sd2(0))) + std_sum - anini.t()*diagmat(1.0/eigencnini)*anini*tauinirg/2;
 
-
-Rcpp::NumericVector thetaplot = Rcpp::NumericVector( Rcpp::Dimension(200));
-for(int k = 0; k<200; k++){
- thetaplot[k] = 2.0*M_PI*(k*0.005); 
-}
-Rcpp::NumericVector estfunc = Rcpp::NumericVector( Rcpp::Dimension(1));
-Rcpp::NumericVector esttheta = Rcpp::NumericVector( Rcpp::Dimension(200));
-arma::colvec cc = arma::colvec(s);cc.fill(0.0);
-
-/*
-NumericVector ankk;
-NumericVector anok; 
-arma::colvec lLnew = arma::colvec(1); 
-int ninnew = 0; 
-arma::colvec r = arma::colvec(1); 
-arma::colvec uu = arma::colvec(1);  
-arma::colvec annew; 
-*/
-Rcpp::NumericVector rndsmp = Rcpp::NumericVector( Rcpp::Dimension(1)); 
-arma::colvec logy = arma::colvec(1); 
-arma::colvec LL = arma::colvec(1); 
-arma::colvec R = arma::colvec(1); 
-arma::colvec x1 = arma::colvec(1);
-arma::colvec g = arma::colvec(1); 
-arma::colvec gxF = arma::colvec(1); 
-arma::colvec count = arma::colvec(1); 
-int ninnew = 0; 
-arma::colvec annew; 
-bool res1 = TRUE;
-bool res2 = FALSE;
-bool res3 = FALSE;
-
-
-	
-//main loop
+//main loop for posterior sampling
 for(int i=0; i<(i_nrun+i_nburn); i++){
 for(int k=0; k<L; k++){
-	/*
-	tmpp.fill(0.0);
+	
+	tmpp.fill(0.0);											// begin MH sampling of kth element of z
 	anok[0] = anini(k);
 	annew = anini; 
 	ankk = rnorm(1, anini(k), 0.05); 
@@ -696,139 +1102,18 @@ for(int k=0; k<L; k++){
       r(0) = fmin(exp(r(0)), 1.0);
 	uu = runif(1);
       if(uu(0) <= r(0)) {
-		anini(k) = ankk[0];
+		anini(k) = ankk[0];									// update z, nin, and loglikelihood if sample is accepted
 		nin = ninnew;
 		gxZ = lLnew;
-      }*/
-rndsmp = rexp(1);
-logy(0) = gxZ(0) - rndsmp[0];
-rndsmp = runif(1, 0, 1.0);
-LL(0) = anini(k) - rndsmp[0];
-R(0) = LL(0) + 1.0;
-x1(0)=0.0;
-g(0)=0.0;
-gxF(0)=0.0;
-count(0)=-1.0;
-ninnew = 0; 
-annew = anini; 
-res1 = TRUE;
-res2 = FALSE;
-res3 = FALSE;
-tmpp.fill(0.0);
+      }
 
-while( res1 ){
-            count = count+1.0;
-		res1 =  count(0) < 200.0 ;
-	      res2 = LL(0)<=-10.0;
-            if (res2){ 
-			LL(0) = LL(0)+1.0;
-			res1= FALSE;}
-		else {
-			annew(k) = LL(0);
-			rmat = tmpmat*annew + mu;
-			for(int i = 0; i<s; i++){
-				if(demean(i)<rmat(i)){
-					tmpp(i) = 1;}
-				else{tmpp(i)=0;}
-			}			
-			sdcomp = (intensityobs - (tmpp*mu1(0) + (1.0-tmpp)*mu2(0)))/(tmpp*sd1(0) + (1.0-tmpp)*sd2(0));
-			std_sum = -sdcomp.t()*sdcomp/2.0;
-			ninnew = sum(tmpp);
-			g = ninnew * (-log(sd1))-ninnew*(-log(sd2)) + std_sum - annew.t()*diagmat(1.0/eigencnini)*annew*tauinirg/2;
-			res3 = g(0) <= logy(0);
-		}
-            if (res3){ 
-			LL(0) = LL(0)+1.0;
-			res1=FALSE;}
-            LL(0) = LL(0) - 1.0;
-            }
-		count = -1.0;
-		res1 = TRUE;res2 = FALSE;res3 = FALSE;
-       while( res1 ){
-            count = count+1.0;
-		res1 =  count(0) < 200.0 ;
-		res2 = R(0)>=10.0;
-            if (res2){ 
-			R(0) = R(0)-1.0;
-			res1= FALSE;}
-		else {
-			annew(k) = R(0);
-			rmat = tmpmat*annew + mu;
-			for(int i = 0; i<s; i++){
-				if(demean(i)<rmat(i)){
-					tmpp(i) = 1;}else{tmpp(i)=0;}
-			}
-			sdcomp = (intensityobs - (tmpp*mu1(0) + (1.0-tmpp)*mu2(0)))/(tmpp*sd1(0) + (1.0-tmpp)*sd2(0));
-			std_sum = -sdcomp.t()*sdcomp/2.0;
-			ninnew = sum(tmpp);
-			g = ninnew * (-log(sd1))-ninnew*(-log(sd2)) + std_sum - annew.t()*diagmat(1.0/eigencnini)*annew*tauinirg/2;
-			res3 = g(0) <= logy(0);
-		}
-            if (res3){ 
-			R(0) = R(0)-1.0;
-			res1=FALSE;}
-            R(0) = R(0) + 1.0;
-            }
-		
-	res1 = LL(0)<=-10.0;
-    if (res1) {
-        LL(0) = -10.0;
-    }
-	res1 = R(0)>10.0;
-    if (res1) {
-        R(0) = 10.0;
-    }
-	count = -1.0;
-	res1 = TRUE;res2 = FALSE;res3 = FALSE;
-    while(res1) {
-		count=count+1;
-		if (count(0) > 200.0){
-		res1 = FALSE;
-		gxF = gxZ;
-		x1 = anini(k);}
-		else{
-       	if (res2){ 
-			gxF = g;
-			res1 = FALSE;
-			}
-		else {
-			x1 = runif(1, LL(0), R(0));
-			annew(k) = x1(0);
-			rmat = tmpmat*annew + mu;
-			for(int i = 0; i<s; i++){
-				if(demean(i)<rmat(i)){
-					tmpp(i) = 1;}else{tmpp(i)=0;}
-			}
-			sdcomp = (intensityobs - (tmpp*mu1(0) + (1.0-tmpp)*mu2(0)))/(tmpp*sd1(0) + (1.0-tmpp)*sd2(0));
-			std_sum = -sdcomp.t()*sdcomp/2.0;
-			ninnew = sum(tmpp);
-			g = ninnew * (-log(sd1))-ninnew*(-log(sd2)) + std_sum - annew.t()*diagmat(1.0/eigencnini)*annew*tauinirg/2;
-			res3 = (x1(0) > anini(k));
-		}
-	  	  	res2 = (g(0) >= logy(0));
-        if (res3) {
-            R(0) = x1(0);
-        }
-        else {
-            LL(0) = x1(0);
-        }}
-    }  
- 	anini(k) = x1(0);
-	nin = ninnew;
-	gxZ = gxF;
-		
-		// use next line for MH sampling instead of slice sampling below it
-		//temp2del = mhstep(k, gxZ, tmpmat, mu, intensityobs, demean, anini, -log(sd1(0)),-log(sd2(0)), eigencnini, tauinirg, nin, mu1, mu2, sd1, sd2);
-		//temp2del = unisliceZ(k, gxZ, tmpmat, mu, intensityobs, demean, anini, -log(sd1(0)),-log(sd2(0)), eigencnini, tauinirg, nin, mu1, mu2, sd1, sd2);
-		//anini(k) = Rcpp::as<double>(temp2del["x1"]);
-		//nin = Rcpp::as<int>(temp2del["nin"]);
-		//gxZ = Rcpp::as<arma::colvec>(temp2del["gxZ"]);
-	}
+} 														// end of MH sampling of all elements of z parameter anini for this sweep
+
 astar = lambdaini + L/2;
 interim = anini.t()*(anini / eigencnini);
 bstar = betatau + interim*0.5;
-tauinirg = rgamma(1,astar(0),bstar(0));
-rmat = tmpmat*anini + mu;
+tauinirg = rgamma(1,astar(0),bstar(0));								// sampling the tau parameter
+rmat = tmpmat*anini + mu;										// calculating new values of nin and nout for new z (anini) sample.  Also, sampling new values of mu1, mu2, sd1, sd2.
 for(int j = 0; j< s; j++){
 	if(demean(j)<=rmat(j)){tmpp(j)=1.0;}
 	else{tmpp(j)=0.0;}
@@ -843,20 +1128,136 @@ mu1 = rnorm(1,mu0(0)/(nin+1) + nin*xbarin(0)/(nin+1), sd1(0)/pow(nin+1.0,0.5));
 mu2 = rnorm(1,mu0(0)/(nout+1) + nout*xbarout(0)/(nout+1), sd2(0)/pow(nout+1.0,0.5));
 sdcomp = (intensityobs - (tmpp*mu1(0) + (1.0-tmpp)*mu2(0)))/(tmpp*sd1(0) + (1.0-tmpp)*sd2(0));
 std_sum = -sdcomp.t()*sdcomp*0.5;
-gx0 = -0.5 * (sum(log(eigencnini)) + tauinirg * interim) + (alphalambda - 1) * log(lambdaini) - betalambda * lambdaini;
-lambdalist = unisliceL(lambdaini, gx0, i_J, tauinirg, anini,  alphalambda,  betalambda, lambdaini);
-lambdaini = Rcpp::as<NumericVector>(lambdalist["x1"]);
-eigencnini = Rcpp::as<arma::colvec>(lambdalist["eigencnini"]);
-cc(i) = Rcpp::as<double>(lambdalist["count"]);
-gxZ = nin * (-log(sd1(0)))-nin*(-log(sd2(0))) + std_sum - anini.t()*(anini / eigencnini)*tauinirg/2;
 
-if(i > i_nburn){
+
+
+gx0 = -0.5 * (sum(log(eigencnini)) + tauinirg * interim) + (alphalambda - 1) * log(lambdaini) - betalambda * lambdaini;
+rndsmp = rexp(1);												// resetting values of variables to be used in slice sampling of a parameters (lambdaini) 
+logy(0) = gx0(0) - rndsmp[0];
+rndsmp = runif(1, 0, 1.0);
+LL(0) = lambdaini(0) - rndsmp[0];
+R(0) = LL(0) + 1.0;
+x1(0)=0.0;
+g(0)=0.0;
+count(0)=0.0;
+interim(0) = 0.0;
+calc1(0) = 0.0;
+res1 = TRUE;
+res2 = FALSE;
+res3 = FALSE;
+
+while( res1 ){												// begin slice sampling of a
+		interim(0)=0.0;
+            count = count+1.0;
+		res1 =  count(0) < 100.0 ;
+	      res2 = LL(0)<=0.0;
+            if (res2){ 
+			LL(0) = LL(0)+1.0;
+			res1= FALSE;}
+		else {
+			calc1 = 2*M_PI*exp(-2*L);
+			for(int i=0; i<(i_J+1); i++){
+				cnini(i) = calc1(0)*Rcpp::as<double>(besselI(2*LL,i));
+			}
+			eigencnini(0) = cnini(0);
+			for(int i=1; i<(i_J+1); i++){
+				eigencnini(2*i-1) = cnini(i);
+				eigencnini(2*i) = cnini(i);
+			} 
+			interim = anini.t()*(anini / eigencnini);
+			g = -0.5 * (sum(log(eigencnini)) + tauinirg * interim) + (alphalambda - 1) * log(LL) - betalambda * LL;
+			res3 = g(0) <= logy(0);
+		}
+            if (res3){ 
+			LL(0) = LL(0)+1.0;
+			res1=FALSE;}
+            LL(0) = LL(0) - 1.0;
+            }
+		count = 0.0;
+		res1 = TRUE;res2 = FALSE;res3 = FALSE;
+       while( res1 ){
+		interim(0)=0.0;
+            count = count+1.0;
+		res1 =  count(0) < 100.0 ;
+		res2 = R(0)>=500.0;
+            if (res2){ 
+			R(0) = R(0)-1.0;
+			res1= FALSE;}
+		else {
+			calc1 = 2*M_PI*exp(-2*R);
+			for(int i=0; i<(i_J+1); i++){
+				cnini(i) = calc1(0)*Rcpp::as<double>(besselI(2*R,i));
+			}
+			eigencnini(0) = cnini(0);
+			for(int i=1; i<(i_J+1); i++){
+				eigencnini(2*i-1) = cnini(i);
+				eigencnini(2*i) = cnini(i);
+			}
+			interim = anini.t()*(anini / eigencnini);
+			g = -0.5 * (sum(log(eigencnini)) + tauinirg * interim) + (alphalambda - 1) * log(R) - betalambda * R;
+			res3 = (g(0) <= logy(0));
+		}
+            if (res3){ 
+			R(0) = R(0)-1.0;
+			res1=FALSE;}
+            R(0) = R(0) + 1.0;
+            }
+		
+	res1 = LL(0)<=0.0;
+    if (res1) {
+        LL(0) = 0.0;
+    }
+	res1 = R(0)>500.0;
+    if (res1) {
+        R(0) = 500.0;
+    }
+	count = 0.0;
+	res1 = TRUE;res2 = FALSE;res3 = FALSE;
+    while(res1) {
+		interim(0)=0.0;
+		count=count+1;
+		res1 =  count(0) < 200.0  ;
+       	if (res2){ 
+			res1 = FALSE;
+			}
+		else {
+			x1 = runif(1, LL(0), R(0));
+			calc1 = 2*M_PI*exp(-2*x1);
+			for(int i=0; i<(i_J+1); i++){
+				cnini(i) = calc1(0)*Rcpp::as<double>(besselI(2*x1,i));
+			}
+			eigencnini(0) = cnini(0);
+			for(int i=1; i<(i_J+1); i++){
+				eigencnini(2*i-1) = cnini(i);
+				eigencnini(2*i) = cnini(i);
+			}
+			interim = anini.t()*(anini / eigencnini);
+			g = -0.5 * (sum(log(eigencnini)) + tauinirg * interim) + (alphalambda - 1) * log(x1) - betalambda * x1;
+			res3 = (x1(0) > lambdaini(0));
+		}
+	  	  	res2 = (g(0) >= logy(0));
+        if (res3) {
+            R(0) = x1(0);
+        }
+        else {
+            LL(0) = x1(0);
+        }
+    }  
+
+lambdaini = x1;												// end of slice sampling of a and taking on new sample
+
+
+
+														// loglikelihood calculation for z using new sample of a
+gxZ = nin * (-log(sd1(0)))-nin*(-log(sd2(0))) + std_sum - anini.t()*(anini / eigencnini)*tauinirg*0.5;
+
+if(i > i_nburn){												// keep only the samples that we do not burn
 ansum = ansum + anini;
 }
 
-}
+}														// end of MCMC sampling
 
-ansum = ansum/i_nrun;
+ansum = ansum/i_nrun;											// compute the output, the posterior mean image boundary
 for(int k = 0; k<200; k++){
 		estfunc[0]=0.0;
   		for(int j = 0; j<L; j++){
@@ -866,10 +1267,9 @@ for(int k = 0; k<200; k++){
 }
 
 
-return Rcpp::List::create(Rcpp::Named("count") = cc, Rcpp::Named("esttheta") = esttheta,Rcpp::Named("thetaplot") = thetaplot, Rcpp::Named("anini") = anini, Rcpp::Named("ansum") = ansum);
-
-//return Rcpp::List::create(Rcpp::Named("count") = cc, Rcpp::Named("gxZ") = gxZ, Rcpp::Named("lambdaini") = lambdaini, Rcpp::Named("mu1") = mu1, Rcpp::Named("mu2") = mu2, Rcpp::Named("sd1") = sd1, Rcpp::Named("sd2") = sd2, Rcpp::Named("tauinirg") = tauinirg, Rcpp::Named("anini") = anini, Rcpp::Named("eigencnini") = eigencnini);
+return Rcpp::List::create(Rcpp::Named("esttheta") = esttheta,Rcpp::Named("thetaplot") = thetaplot);
 }')
+
 
 
 
@@ -1302,20 +1702,16 @@ lines(x,y, lty = 2, lwd = 3)
 # 100 x 100 obs
 # SLICE sampling
 #                       user      system    elapsed
-#   c++ only            343.01    36.73     380.39   
-#   c++ within R loop   281.47    0.94      283.26         
+#   c++ only            305.73    0.70      307.34  
+#   c++ within R loop   325.34    0.97      327.17          
 #   Only R              2497.30   0.93      2501.98  
 
 # Runtime results: on an Intel Core i7-4790K CPU @ 4.00 GHz with 16 GB RAM running RGui 64-bit on Windows 10
 # 100 x 100 obs
 # MH sampling
 #                       user      system    elapsed
-#   c++ only            107.30    37.61     166.06    
+#   c++ only            21.22     0.00      21.30     
 #   c++ within R loop   27.13     0.46      27.74      
 #   Only R              53.07     0.48      53.57   
        
 
-# laptop mh
-#R     167.09    1.14  169.11 
-#Rc++  86.85     0.70   88.03 
-#c++   67.25    0.04   67.93  
