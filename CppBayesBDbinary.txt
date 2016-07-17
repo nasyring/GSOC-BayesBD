@@ -163,56 +163,40 @@ BayesBD.binary = function (obs, ini.mean = 0.4, n.run = 5000, n.burn = 1000,
 
 cppFunction(depends = "RcppArmadillo",'Rcpp::List unislice2(arma::colvec & x0,arma::colvec & diff,arma::colvec & tmpmatk,arma::colvec & ank,arma::colvec & intensity,arma::colvec & g2,arma::colvec & g4,arma::colvec & g5,arma::colvec & g6,arma::colvec & gx0){
 RNGScope scope;
-double w = 1.0;
 int s = diff.n_rows; 
 arma::colvec m = arma::colvec(1);m.fill(10000.0);
-double d_m = 10000.0;
-arma::colvec lower = arma::colvec(1); lower.fill(-10000.0);
-arma::colvec upper = arma::colvec(1); upper.fill(10000.0);
 NumericVector rexpval = rexp(1);
 arma::colvec logy = arma::colvec(1); logy(0) = gx0(0) - rexpval(0);
 arma::colvec x1 = arma::colvec(1); x1.fill(0.0);
-arma::colvec gx1 = arma::colvec(1); gx1.fill(0.0);
-arma::colvec gxF = arma::colvec(1); gxF.fill(0.0);
-arma::colvec u = arma::colvec(1); u = runif(1, 0, w);
-arma::colvec L = arma::colvec(1); L = x0 - u;
-arma::colvec R = arma::colvec(1); R = x0 + (w - u);
-arma::colvec L2 = arma::colvec(1); L2(0)=L(0);
-arma::colvec R2 = arma::colvec(1); R2(0)=R(0);
-arma::colvec J = arma::colvec(1); J.fill(0.0);
-arma::colvec K = arma::colvec(1); K.fill(0.0);
-Rcpp::LogicalVector LL = Rcpp::LogicalVector( Rcpp::Dimension(1));
-Rcpp::LogicalVector RR = Rcpp::LogicalVector( Rcpp::Dimension(1));
-arma::colvec ggL = arma::colvec(1); ggL.fill(0.0);
-arma::colvec ggR = arma::colvec(1); ggR.fill(0.0);
-Rcpp::LogicalVector gg1 = Rcpp::LogicalVector( Rcpp::Dimension(1));
-Rcpp::LogicalVector gxy = Rcpp::LogicalVector( Rcpp::Dimension(1));
-Rcpp::LogicalVector x10 = Rcpp::LogicalVector( Rcpp::Dimension(1));
+rexpval = runif(1, 0, 1.0);
+arma::colvec LL = arma::colvec(1); LL(0) = x0(0) - rexpval[0];
+arma::colvec R = arma::colvec(1); R = LL + 1.0;
+arma::colvec g = arma::colvec(1); g.fill(0.0);
 arma::colvec diffnew = arma::colvec(s);diffnew.fill(0.0);
-arma::colvec Lv = arma::colvec(s);Lv.fill(L(0));
+arma::colvec Lv = arma::colvec(s);Lv.fill(LL(0));
 arma::colvec Rv = arma::colvec(s);Rv.fill(R(0));
 arma::colvec xv = arma::colvec(s);xv.fill(0.0);
 arma::colvec ankv = arma::colvec(s);ankv.fill(ank(0));
 arma::colvec count = arma::colvec(1); count.fill(0.0);
-bool res = TRUE;
-bool resL = FALSE;
-bool resR = FALSE;
-bool resg = FALSE;
-bool res1 = FALSE;
-double dL = 0.0;
-double dR = 0.0;
+bool res1 = TRUE;
+bool res2 = FALSE;
+bool res3 = FALSE;
 int g1 = 0;
 int g3 = 0;
 	
 
 
-        J = floor(runif(1, 0.0, d_m));
-        K = (m - 1) - J;
 		count = 0.0;
-while( res ){
+while( res1 ){
             count = count+1;
-		res = count(0) < J(0);
-		Lv.fill(L(0));
+		res1 = count(0) < 100.0;
+		res2 = LL(0)<=-10000;
+		if(res2){
+			LL(0) = LL(0)+1;
+			res1 = FALSE;
+		}
+		else {
+		Lv.fill(LL(0));
 		diffnew = diff - ((Lv - ankv) % tmpmatk);
 		g1 = 0; g3 = 0;
 		for(int i=0; i<s;i++){
@@ -223,25 +207,28 @@ while( res ){
 				}
 			}
 		}
-		 resL = (L(0)<=lower(0));
-         if (resL){ 
-			L2(0) = L(0);
-			res= FALSE;}
-		ggL = g1*g2+g3*g4-((pow(L,2))/g5)*g6;
-       	 resg = (ggL(0) <= logy(0));
-           if (resg){ 
-			L2(0) = L(0);
-			res=FALSE;}
-            L = L - w;
+		g = g1*g2+g3*g4-((pow(LL,2))/g5)*g6;
+       	 res3 = g(0) <= logy(0);
+		}
+           if (res3){ 
+			LL(0) = LL(0) + 1.0;
+			res1=FALSE;}
+            LL(0) = LL(0) - 1.0;
     }
 
-	resL = FALSE;
-	resg = FALSE;
+	res2 = FALSE;
+	res3 = FALSE;
 		count = 0.0;
-		res = TRUE;
-       while( res ){
-            count=count+1;
-		res = count(0) < K(0);
+		res1 = TRUE;
+       while( res1 ){
+            count=count+1.0;
+		res1 = count(0) < 100.0;
+		res2 = R(0)>=10000.0;
+		if(res2){
+			R(0) = R(0) - 1.0;
+			res1 = FALSE;
+		}
+		else {
 		Rv.fill(R(0));
 		diffnew = diff - ((Rv - ankv) % tmpmatk);
 		g1 = 0; g3 = 0;
@@ -253,33 +240,34 @@ while( res ){
 				}
 			}
 		}
-		 resL = (R(0)>=upper(0));
-            if (resL){ 
-               R2(0)=R(0);
-			res = FALSE;}
-		ggR = g1*g2+g3*g4-((pow(R,2))/g5)*g6;
-		 resg = (ggR(0) <= logy(0));
-            if (resg){ 
-                R2(0)=R(0);
-			res = FALSE;}
-            R = R + w;
+		 g = g1*g2+g3*g4-((pow(R,2))/g5)*g6;
+		 res3 = g(0) <= logy(0);
+      	}      
+	if (res3){ 
+                R(0)=R(0)-1.0;
+			res1 = FALSE;}
+            R(0) = R(0) + 1.0;
           }
-	resL = (L2(0)<lower(0));
-    if (resL) {
-        L2(0) = lower(0);
+	res1 = (LL(0)<-10000.0);
+    if (res1) {
+        LL(0) = -10000.0;
     }
-	resR = (R2(0)>upper(0));
-    if (resR) {
-        R2(0) = upper(0);
+	res1 = (R(0)>10000.0);
+    if (res1) {
+        R(0) = 10000.0;
     }
 	count = 0.0;
-	res = TRUE;
-    while(res) {
+	res1 = TRUE;
+	res2 = FALSE;
+	res3 = FALSE;
+    while(res1) {
 		count=count+1;
-	res = count(0) < 1000.0 ;
-	dL = L2(0);
-	dR = R2(0);
-        x1 = runif(1, dL, dR);
+	res1 = count(0) < 200.0 ;
+		if(res2){
+		res1 = FALSE;
+		}
+	else{
+        x1 = runif(1, LL(0), R(0));
 		xv.fill(x1(0));
 		diffnew = diff - ((xv - ankv) % tmpmatk);
 	     g1 =0; g3=0;
@@ -291,23 +279,18 @@ while( res ){
 				}
 			}
 		}
-        gx1 = g1*g2+g3*g4-((pow(x1,2))/g5)*g6;
-	  resg = (gx1(0) >= logy(0));
-        if (resg){ 
-            gxF(0)=gx1(0);
-		res = FALSE;
-			}
-		res1 = (x1(0) > x0(0));
-        if (res1) {
-            R2(0) = x1(0);
+        g = g1*g2+g3*g4-((pow(x1,2))/g5)*g6;
+	   res3 = (x1(0) > x0(0));
+	}
+ 	res2 = (g(0) >= logy(0));
+        if (res3) {
+            R(0) = x1(0);
         }
         else {
-            L2(0) = x1(0);
+            LL(0) = x1(0);
         }
     }  
-  return Rcpp::List::create(Rcpp::Named("x1") = x1,Rcpp::Named("logdensity") = gxF,Rcpp::Named("diffnew") = diffnew,Rcpp::Named("nin") = g3,Rcpp::Named("ninone") =g1,Rcpp::Named("count") =count);
-
-//return Rcpp::List::create(Rcpp::Named("res") = res,Rcpp::Named("resg") = resg,Rcpp::Named("ggL") = ggL,Rcpp::Named("resL") = resL,Rcpp::Named("logy") = logy,Rcpp::Named("L") = L, Rcpp::Named("L2") = L2,Rcpp::Named("count") = count, Rcpp::Named("g3") = g3,  Rcpp::Named("g1") = g1,  Rcpp::Named("R") = R,  Rcpp::Named("R2") = R2,  Rcpp::Named("ggR") = ggR,   Rcpp::Named("gx1") = gx1,Rcpp::Named("x1") = x1);
+  return Rcpp::List::create(Rcpp::Named("x1") = x1,Rcpp::Named("logdensity") = g,Rcpp::Named("diffnew") = diffnew,Rcpp::Named("nin") = g3,Rcpp::Named("ninone") =g1,Rcpp::Named("count") =count);
 }')
 
 
@@ -470,7 +453,7 @@ cppFunction(depends = "RcppArmadillo",'Rcpp::List BayesBDbinary(SEXP & obs, SEXP
 RNGScope scp;
 Rcpp::Function eigenfun("eigenfun");
 Rcpp::Function besselI("besselI");
-Rcpp::Function unislice2("unislice2");
+//Rcpp::Function unislice2("unislice2");
 Rcpp::Function unisliceL("unisliceL");
 
 // Extracting the inputs
@@ -601,6 +584,25 @@ for(int k = 0; k<200; k++){
 Rcpp::NumericVector estfunc = Rcpp::NumericVector( Rcpp::Dimension(1));
 Rcpp::NumericVector esttheta = Rcpp::NumericVector( Rcpp::Dimension(200));
 
+arma::colvec m = arma::colvec(1);m.fill(10000.0);
+NumericVector rexpval;
+arma::colvec logy = arma::colvec(1); 
+arma::colvec xx1 = arma::colvec(1); xx1.fill(0.0);
+arma::colvec LL = arma::colvec(1); 
+arma::colvec R = arma::colvec(1); 
+arma::colvec g = arma::colvec(1); g.fill(0.0);
+arma::colvec diffnew = arma::colvec(s);diffnew.fill(0.0);
+arma::colvec Lv = arma::colvec(s);Lv.fill(LL(0));
+arma::colvec Rv = arma::colvec(s);Rv.fill(R(0));
+arma::colvec xv = arma::colvec(s);xv.fill(0.0);
+arma::colvec ankv = arma::colvec(s);ankv.fill(ank(0));
+arma::colvec count = arma::colvec(1); count.fill(0.0);
+bool res1 = TRUE;
+bool res2 = FALSE;
+bool res3 = FALSE;
+int g1 = 0;
+int g3 = 0;
+
 //main loop
 for(int i=0; i<(i_nrun+i_nburn); i++){
 for(int k=0; k<L; k++){
@@ -608,12 +610,138 @@ for(int k=0; k<L; k++){
 		ank(0) = anini(k);
 		tmpmatk = tmpmat.col(k);
 		gx0 = ninone*alphaini+nin*betaini-(((pow(ank,2))/eigencnk)*tauinirg/2);
-		temp2del = unislice2(ank,diffini,tmpmatk,ank,intensityobs,alphaini,betaini,eigencnk,tauinirg/2, ninone*alphaini+nin*betaini-(((pow(ank,2))/eigencnk)*tauinirg/2));
-		tmp2del2 = Rcpp::as<arma::colvec>(temp2del["logdensity"]);
-		anini(k) = Rcpp::as<double>(temp2del["x1"]);
-		ninone = Rcpp::as<int>(temp2del["ninone"]);
-		nin = Rcpp::as<int>(temp2del["nin"]);
-		diffini = Rcpp::as<arma::colvec>(temp2del["diffnew"]);
+
+
+rexpval = rexp(1);
+logy(0) = gx0(0) - rexpval(0);
+xx1.fill(0.0);
+rexpval = runif(1, 0, 1.0);
+LL(0) = ank(0) - rexpval[0];
+R = LL + 1.0;
+g.fill(0.0);
+diffnew.fill(0.0);
+Lv.fill(LL(0));
+Rv.fill(R(0));
+xv.fill(0.0);
+ankv.fill(ank(0));
+count.fill(0.0);
+res1 = TRUE;
+res2 = FALSE;
+res3 = FALSE;
+g1 = 0;
+g3 = 0;
+
+	
+while( res1 ){
+            count = count+1;
+		res1 = count(0) < 100.0;
+		res2 = LL(0)<=-10000;
+		if(res2){
+			LL(0) = LL(0)+1;
+			res1 = FALSE;
+		}
+		else {
+		Lv.fill(LL(0));
+		diffnew = diffini - ((Lv - ankv) % tmpmatk);
+		g1 = 0; g3 = 0;
+		for(int i=0; i<s;i++){
+			if(diffnew(i)<=0){
+				g3 = g3+1;
+				if(intensityobs(i)==1){
+					g1 = g1+1;
+				}
+			}
+		}
+		g = g1*alphaini+g3*betaini-((pow(LL,2))/eigencnk)*tauinirg/2;
+       	 res3 = g(0) <= logy(0);
+		}
+           if (res3){ 
+			LL(0) = LL(0) + 1.0;
+			res1=FALSE;}
+            LL(0) = LL(0) - 1.0;
+    }
+
+	res2 = FALSE;
+	res3 = FALSE;
+		count = 0.0;
+		res1 = TRUE;
+       while( res1 ){
+            count=count+1.0;
+		res1 = count(0) < 100.0;
+		res2 = R(0)>=10000.0;
+		if(res2){
+			R(0) = R(0) - 1.0;
+			res1 = FALSE;
+		}
+		else {
+		Rv.fill(R(0));
+		diffnew = diffini - ((Rv - ankv) % tmpmatk);
+		g1 = 0; g3 = 0;
+		for(int i=0; i<s;i++){
+			if(diffnew(i)<=0){
+				g3 = g3+1;
+				if(intensityobs(i)==1){
+					g1 = g1+1;
+				}
+			}
+		}
+		 g = g1*alphaini+g3*betaini-((pow(R,2))/eigencnk)*tauinirg/2;
+		 res3 = g(0) <= logy(0);
+      	}      
+	if (res3){ 
+                R(0)=R(0)-1.0;
+			res1 = FALSE;}
+            R(0) = R(0) + 1.0;
+          }
+	res1 = (LL(0)<-10000.0);
+    if (res1) {
+        LL(0) = -10000.0;
+    }
+	res1 = (R(0)>10000.0);
+    if (res1) {
+        R(0) = 10000.0;
+    }
+	count = 0.0;
+	res1 = TRUE;
+	res2 = FALSE;
+	res3 = FALSE;
+    while(res1) {
+		count=count+1;
+	res1 = count(0) < 200.0 ;
+		if(res2){
+		res1 = FALSE;
+		}
+	else{
+        xx1 = runif(1, LL(0), R(0));
+		xv.fill(xx1(0));
+		diffnew = diffini - ((xv - ankv) % tmpmatk);
+	     g1 =0; g3=0;
+              for(int i=0; i<s;i++){
+			if(diffnew(i)<=0){
+				g3 = g3+1;
+				if(intensityobs(i)==1){
+					g1 = g1+1;
+				}
+			}
+		}
+        g = g1*alphaini+g3*betaini-((pow(xx1,2))/eigencnk)*tauinirg/2;
+	   res3 = (xx1(0) > ank(0));
+	}
+ 	res2 = (g(0) >= logy(0));
+        if (res3) {
+            R(0) = xx1(0);
+        }
+        else {
+            LL(0) = xx1(0);
+        }
+    }  
+
+		//temp2del = unislice2(ank,diffini,tmpmatk,ank,intensityobs,alphaini,betaini,eigencnk,tauinirg/2, ninone*alphaini+nin*betaini-(((pow(ank,2))/eigencnk)*tauinirg/2));
+		//tmp2del2 = Rcpp::as<arma::colvec>(temp2del["logdensity"]);
+		anini(k) = xx1(0);
+		ninone = g1;
+		nin = g3;
+		diffini = diffnew;
 	}
 
 astar = lambdaini + L/2;
@@ -821,7 +949,7 @@ lines(x,y, lty = 2, lwd = 3)
 
 # Runtime results: on an Intel Core i7-4790K CPU @ 4.00 GHz with 16 GB RAM running RGui 64-bit on Windows 10
 #                       user      system    elapsed
-#   c++ only            75.19     0.04      75.30   
+#   c++ only            64.84     0.00      64.95   
 #   c++ within R loop   69.81     0.37      70.90    
 #   Only R              214.72    0.09      215.00  
 
