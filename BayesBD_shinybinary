@@ -1,0 +1,489 @@
+###
+#
+# Image boundary functions
+#
+###
+
+
+library(BayesBD)
+library(Rcpp)
+library(RcppArmadillo)
+library(inline)
+
+
+cppFunction(depends = "RcppArmadillo",'Rcpp::List unisliceL(arma::colvec & x0, arma::colvec & gx0, int & i_J, arma::colvec & tauini, arma::colvec & anini, int & alphalambda, int & betalambda, arma::colvec & lambdaini){
+RNGScope scope;
+Rcpp::Function besselI("besselI");
+Rcpp::NumericVector rndsmp = Rcpp::NumericVector( Rcpp::Dimension(1)); rndsmp = rexp(1);
+arma::colvec logy = arma::colvec(1); logy(0) = gx0(0) - rndsmp[0];
+rndsmp = runif(1, 0, 1.0);
+arma::colvec L = arma::colvec(1); L(0) = lambdaini(0) - rndsmp[0];
+arma::colvec R = arma::colvec(1); R(0) = L(0) + 1.0;
+arma::colvec x1 = arma::colvec(1);x1(0)=0.0;
+arma::colvec g = arma::colvec(1); g(0)=0.0;
+arma::colvec count = arma::colvec(1); count(0)=0.0;
+arma::colvec interim = arma::colvec(1);interim(0) = 0.0;
+arma::colvec cnini = arma::colvec(i_J+1);
+arma::colvec eigencnini = arma::colvec(2*i_J+1);
+arma::colvec calc1 = arma::colvec(1);calc1(0) = 0.0;
+bool res1 = TRUE;
+bool res2 = FALSE;
+bool res3 = FALSE;
+
+
+while( res1 ){
+		interim(0)=0.0;
+            count = count+1.0;
+		res1 =  count(0) < 20.0 ;
+	      res2 = L(0)<=0.0;
+            if (res2){ 
+			L(0) = L(0)+1.0;
+			res1= FALSE;}
+		else {
+			calc1 = 2*M_PI*exp(-2*L);
+			for(int i=0; i<(i_J+1); i++){
+				cnini(i) = calc1(0)*Rcpp::as<double>(besselI(2*L,i));
+			}
+			eigencnini(0) = cnini(0);
+			for(int i=1; i<(i_J+1); i++){
+				eigencnini(2*i-1) = cnini(i);
+				eigencnini(2*i) = cnini(i);
+			} 
+			interim = anini.t()*(anini / eigencnini);
+			g = -0.5 * (sum(log(eigencnini)) + tauini * interim) + (alphalambda - 1) * log(L) - betalambda * L;
+			res3 = g(0) <= logy(0);
+		}
+            if (res3){ 
+			L(0) = L(0)+1.0;
+			res1=FALSE;}
+            L(0) = L(0) - 1.0;
+           }
+		 count = 0.0;
+		res1 = TRUE;res2 = FALSE;res3 = FALSE;
+       while( res1 ){
+		interim(0)=0.0;
+            count = count+1.0;
+		res1 =  count(0) < 20.0 ;
+		res2 = R(0)>=500.0;
+            if (res2){ 
+			R(0) = R(0)-1.0;
+			res1= FALSE;}
+		else {
+			calc1 = 2*M_PI*exp(-2*R);
+			for(int i=0; i<(i_J+1); i++){
+				cnini(i) = calc1(0)*Rcpp::as<double>(besselI(2*R,i));
+			}
+			eigencnini(0) = cnini(0);
+			for(int i=1; i<(i_J+1); i++){
+				eigencnini(2*i-1) = cnini(i);
+				eigencnini(2*i) = cnini(i);
+			}
+			interim = anini.t()*(anini / eigencnini);
+			g = -0.5 * (sum(log(eigencnini)) + tauini * interim) + (alphalambda - 1) * log(R) - betalambda * R;
+			res3 = (g(0) <= logy(0));
+		}
+            if (res3){ 
+			R(0) = R(0)-1.0;
+			res1=FALSE;}
+            R(0) = R(0) + 1.0;
+            }
+		
+	res1 = L(0)<=0.0;
+    if (res1) {
+        L(0) = 0.0;
+    }
+	res1 = R(0)>500.0;
+    if (res1) {
+        R(0) = 500.0;
+    }
+	count = 0.0;
+	res1 = TRUE;res2 = FALSE;res3 = FALSE;
+    while(res1) {
+		interim(0)=0.0;
+		count=count+1;
+		res1 =  count(0) < 100.0  ;
+       	if (res2){ 
+			res1 = FALSE;
+			}
+		else {
+			x1 = runif(1, L(0), R(0));
+			calc1 = 2*M_PI*exp(-2*x1);
+			for(int i=0; i<(i_J+1); i++){
+				cnini(i) = calc1(0)*Rcpp::as<double>(besselI(2*x1,i));
+			}
+			eigencnini(0) = cnini(0);
+			for(int i=1; i<(i_J+1); i++){
+				eigencnini(2*i-1) = cnini(i);
+				eigencnini(2*i) = cnini(i);
+			}
+			interim = anini.t()*(anini / eigencnini);
+			g = -0.5 * (sum(log(eigencnini)) + tauini * interim) + (alphalambda - 1) * log(x1) - betalambda * x1;
+			res3 = (x1(0) > x0(0));
+		}
+	  	  	res2 = (g(0) >= logy(0));
+        if (res3) {
+            R(0) = x1(0);
+        }
+        else {
+            L(0) = x1(0);
+        }
+    }  
+ 	return Rcpp::List::create(Rcpp::Named("x1") = x1, Rcpp::Named("count") = count);
+}')
+
+
+# This c++ function computes the nth eigenfunction of the SEP kernel.  It is used by
+# BayesBDbinary below.
+
+
+cppFunction('double eigenfun(int & n, double & x) { 
+	int k1 = n%2;
+    	double k2 = (n - k1)/2;
+	double ret = 0;
+   	if (n == 1) {
+       		 ret = 1/sqrt(2 * M_PI) + 0 * x;
+    	}
+    	if (n > 1) {
+        	if (k1 == 0) {
+            		 ret = 1/sqrt(M_PI) * cos(k2 * x);
+        	}
+       		if (k1 == 1) {
+            		 ret = 1/sqrt(M_PI) * sin(k2 * x);
+       		}
+    }
+    return ret;
+}')
+
+# This c++ function is a translation to c++ of the BayesBD.binary R function above.  It
+# produces posterior samples of the boundary of a binary image.  The output is a set of
+# boundary values at 200 points, to be plotted on the image. 
+
+cppFunction(depends = "RcppArmadillo",'Rcpp::List BayesBDbinary(SEXP & obs, SEXP & inimean, SEXP & nrun, SEXP & nburn, SEXP & J) { 
+
+// Including additional user-defined Rcpp functions
+RNGScope scp;
+Rcpp::Function eigenfun("eigenfun");
+Rcpp::Function besselI("besselI");
+Rcpp::Function unisliceL("unisliceL");
+
+// Extracting the inputs
+Rcpp::List 		      	obsL(obs);
+arma::mat thetaobs 	 	= Rcpp::as<arma::mat>(obsL["theta.obs"]);
+arma::colvec demean 	 	= Rcpp::as<arma::colvec>(obsL["r.obs"]);
+arma::colvec intensityobs     = Rcpp::as<arma::colvec>(obsL["intensity"]);
+int i_nrun 				= Rcpp::as<int>(nrun);
+int i_nburn				= Rcpp::as<int>(nburn);
+int i_J				= Rcpp::as<int>(J);
+double d_inimean 			= Rcpp::as<double>(inimean);
+
+// Declaring variables 
+Rcpp::List temp2del;
+Rcpp::List lambdalist;
+
+int s					= thetaobs.size();
+int L                  		= 2*i_J+1;
+int betatau           		= 1;
+int alphalambda      		= 2;
+int betalambda       		= 1;
+int nin = 0;
+int ninone = 0;
+int nout = 0;
+int noutone = 0;
+
+arma::colvec tmpmatk		= arma::colvec(s); tmpmatk.fill(0.0);
+arma::colvec mu			= arma::colvec(s); mu.fill(d_inimean);
+arma::colvec diffini 		= demean - mu; 
+arma::colvec eigencnk   	= arma::colvec(1); eigencnk.fill(0.0);
+arma::colvec ank   	      = arma::colvec(1); ank.fill(0.0); 
+arma::colvec astar   	      = arma::colvec(1); astar(0)=0.0;
+arma::colvec bstar   	      = arma::colvec(1); bstar(0)=0.0;
+arma::colvec tauinirg   	= arma::colvec(1); tauinirg(0)=500.0;
+arma::colvec x1 			= arma::colvec(1); x1.fill(0.0); 
+arma::colvec x2 			= arma::colvec(1); x2.fill(0.0);
+arma::colvec piin1 		= arma::colvec(1); piin1.fill(0.0);
+arma::colvec piin2 		= arma::colvec(1); piin2.fill(0.0);
+arma::colvec piout1 		= arma::colvec(1); piout1.fill(0.0);
+arma::colvec piout2 		= arma::colvec(1); piout2.fill(0.0);
+arma::colvec piinini 		= arma::colvec(1); piinini.fill(0.0);
+arma::colvec pioutini 		= arma::colvec(1); pioutini.fill(0.0);
+arma::colvec calc1 		= arma::colvec(1); calc1.fill(0.0);
+arma::colvec alphaini 		= arma::colvec(1); alphaini.fill(0.0);
+arma::colvec betaini 		= arma::colvec(1); betaini.fill(0.0);
+arma::colvec lambdaini 		= arma::colvec(1); lambdaini(0)=1.0;
+arma::colvec anini 		= arma::colvec(L); anini.fill(0.0);
+arma::colvec cnini            = arma::colvec(i_J+1); cnini.fill(0.0);
+arma::colvec eigencnini       = arma::colvec(L); eigencnini.fill(0.0);
+arma::colvec tmp2del2         = arma::colvec(1); tmp2del2.fill(0.0);
+arma::colvec interim          = arma::colvec(1); interim.fill(0.0);
+arma::colvec rmat             = arma::colvec(s); rmat.fill(0.0);
+arma::colvec tmpp             = arma::colvec(s); tmpp.fill(0.0);
+arma::colvec tmp              = arma::colvec(s); tmp.fill(0.0);
+arma::colvec gx0              = arma::colvec(1); gx0.fill(0.0);
+arma::colvec ansum		= arma::colvec(L); ansum.fill(0.0);
+arma::mat tmpmat              = arma::mat(s,L); tmpmat.fill(0.0);
+
+// Filling tmpmat with values for each of L eigenfunctions for each of s observations
+for (int i=0; i<s; i++) {
+	for(int j = 0; j<L;j++){
+            tmpmat(i,j) = Rcpp::as<double>(eigenfun(j+1,thetaobs[i]));
+	}
+}
+
+
+for(int i = 0; i<s; i++){
+	if(demean(i) < mu(i)){
+		if(intensityobs(i) == 1.0){
+			piin1(0) = piin1(0) + 1.0;
+		}
+	}
+}
+
+for(int i = 0; i<s; i++){
+	if(demean(i) < mu(i)){
+		piin2(0) = piin2(0) + 1.0;
+	}
+}
+
+for(int i = 0; i<s; i++){
+	if(demean(i) >= mu(i)){
+		if(intensityobs(i) == 1.0){
+			piout1(0) = piout1(0) + 1.0;
+		}
+	}
+}
+
+for(int i = 0; i<s; i++){
+	if(demean(i) >= mu(i)){
+		piout2(0) = piout2(0) + 1.0;
+	}
+}
+
+piinini = piin1 / piin2;
+pioutini = piout1 / piout2;
+
+
+calc1 = 2*M_PI*exp(-2*lambdaini);
+for(int i=0; i<(i_J+1); i++){
+	cnini(i) = calc1(0)*Rcpp::as<double>(besselI(max(2*lambdaini,0.0),i));
+}
+
+eigencnini(0) = cnini(0);
+for(int i=1; i<(i_J+1); i++){
+	eigencnini(2*i-1) = cnini(i);
+	eigencnini(2*i) = cnini(i);
+} 
+alphaini = log(piinini*(1-pioutini)/(pioutini*(1-piinini)));
+betaini = log((1 - piinini)/(1 - pioutini));
+for(int i = 0; i<s; i++){
+	if(diffini(i)<0){
+		tmp(i) = 1;
+	}
+}
+
+nin = sum(tmp);
+for(int i=0; i<s; i++){
+	if(intensityobs(i)==1){
+	ninone = ninone + tmp(i);
+	}
+}
+
+Rcpp::NumericVector thetaplot = Rcpp::NumericVector( Rcpp::Dimension(200));
+for(int k = 0; k<200; k++){
+ thetaplot[k] = 2.0*M_PI*(k/200.0); 
+}
+Rcpp::NumericVector estfunc = Rcpp::NumericVector( Rcpp::Dimension(1));
+Rcpp::NumericVector esttheta = Rcpp::NumericVector( Rcpp::Dimension(200));
+
+int g1 = 0;
+int g3 = 0;
+arma::colvec ankv = arma::colvec(s);
+NumericVector anok; NumericVector ankk;
+arma::colvec diffnew = arma::colvec(s);
+arma::colvec Lv = arma::colvec(s);
+arma::colvec lLnew = arma::colvec(1);
+arma::colvec r = arma::colvec(1);
+arma::colvec uu = arma::colvec(1); 
+
+//main loop
+for(int i=0; i<(i_nrun+i_nburn); i++){
+for(int k=0; k<L; k++){
+		eigencnk(0) = eigencnini(k);
+		ank(0) = anini(k);
+		tmpmatk = tmpmat.col(k);
+		gx0 = ninone*alphaini+nin*betaini-(((pow(ank,2))/eigencnk)*tauinirg/2);
+
+	g1 = 0; g3 = 0;											// begin MH sampling of kth element of z
+	anok[0] = anini(k);
+	ankk = rnorm(1, anini(k), 0.05); 
+	Lv.fill(ankk[0]);
+	ankv.fill(anok[0]);
+		diffnew = diffini - ((Lv - ankv) % tmpmatk);
+		g1 = 0; g3 = 0;
+		for(int i=0; i<s;i++){
+			if(diffnew(i)<=0){
+				g3 = g3+1;
+				if(intensityobs(i)==1){
+					g1 = g1+1;
+				}
+			}
+		}
+	lLnew = g1*alphaini+g3*betaini-((pow(ankk[0],2))/eigencnk)*tauinirg/2;
+	r = dnorm(ankk, anok[0],.05) - dnorm(anok,ankk[0],.05);
+	r = r + lLnew - gx0;
+      r(0) = fmin(exp(r(0)), 1.0);
+	uu = runif(1);
+      if(uu(0) <= r(0)) {
+		ninone = g1;
+		nin = g3;
+		diffini = diffnew;
+		anini(k) = ankk[0];									// update z, nin, and loglikelihood if sample is accepted
+		gx0 = lLnew;
+      }
+
+	}
+
+astar = lambdaini + L/2;
+interim = anini.t()*(anini / eigencnini);
+bstar = betatau + interim/2;
+tauinirg = rgamma(1,astar(0),bstar(0));
+rmat.fill(0);
+rmat = tmpmat*anini + mu;
+for(int j = 0; j< s; j++){
+	if(demean(j)<=rmat(j)){tmpp(j)=1.0;}
+	else{tmpp(j)=0.0;}
+}
+nin = sum(tmpp);
+ninone = sum(intensityobs%tmpp);
+nout = s - nin;
+noutone = sum(intensityobs) - ninone;
+
+x1 = rbeta(1, ninone, nin - ninone);
+x2 = rbeta(1, noutone, nout - noutone);
+
+piinini = max(x1, x2);
+pioutini = min(x1, x2);
+
+alphaini = log(piinini * (1 - pioutini)/(pioutini *(1 - piinini)));
+betaini = log((1 - piinini)/(1 - pioutini));
+
+gx0 = -1/2 * (sum(log(eigencnini)) + tauinirg * interim) + (alphalambda - 1) * log(lambdaini) - betalambda * lambdaini;
+
+lambdalist = unisliceL(lambdaini, gx0, i_J, tauinirg, anini,  alphalambda,  betalambda, lambdaini);
+lambdaini = Rcpp::as<NumericVector>(lambdalist["x1"]);
+
+if(i > i_nburn){
+ansum = ansum + anini;
+}
+
+}
+
+ansum = ansum/i_nrun;
+for(int k = 0; k<200; k++){
+		estfunc[0]=0.0;
+  		for(int j = 0; j<L; j++){
+			estfunc[0] = estfunc[0] + Rcpp::as<double>(eigenfun(j+1,thetaplot[k]))*ansum(j)+(d_inimean/L);
+		}
+		esttheta[k] =estfunc[0]+esttheta[k];
+}
+
+return Rcpp::List::create(Rcpp::Named("esttheta") = esttheta,Rcpp::Named("thetaplot") = thetaplot);
+}')
+
+triangle2 = function(S){
+	triangle.scalar <- function(theta, h) {
+	r=0
+        if (any(theta >= 0 & theta <  pi/2, theta>= 11*pi/6 & theta < 2*pi)) {
+	      h = S*sin(pi/3)
+            k = S*cos(pi/3)
+		hstar = k*tan(pi/6)
+		hh = h - hstar
+		r = hh / ((sin(theta) + (h/k)*cos(theta)))
+        }
+        if (theta>= pi/2 & theta < 7*pi/6) {
+            theta = pi - theta	
+	      h = S*sin(pi/3)
+		k = S*cos(pi/3)
+		hstar = k*tan(pi/6)
+		hh = h - hstar
+		r = hh / ((sin(theta) + (h/k)*cos(theta)))
+        }
+        if (theta>= 7*pi/6 & theta < 3*pi/2) {
+           a = 3*pi/2-theta
+           h = S*sin(pi/3)
+		k = S*cos(pi/3)
+		hstar = k*tan(pi/6)
+	     r = (hstar)/cos(a) 
+        }
+        if (theta>=3*pi/2 & theta< 11*pi/6) {
+           a = theta-3*pi/2
+           h = S*sin(pi/3)
+			k = S*cos(pi/3)
+		hstar = k*tan(pi/6)
+	     r = (hstar)/cos(a) 
+        }
+        return(r)
+    }
+    ret = function(theta) c(sapply(theta, function(theta) triangle.scalar(theta, 
+        h)))
+    return(ret)	
+}
+
+
+gamma.fun = ellipse(a = 0.35, b = 0.25)
+obs = par2obs(m = 100, pi.in = 0.5, pi.out = 0.2, design = 'J', gamma.fun)
+rotate <- function(x) t(apply(x, 2, rev))  # rotate closewise by 90 degrees
+image(rotate(obs$intensity), axes = FALSE, asp = 1, main = 'observation')
+t1 = proc.time()
+cppsamp = BayesBDbinary(obs, .4, 4000, 1000, 10)
+t2 = proc.time()
+t2-t1
+x = cppsamp$esttheta*cos(cppsamp$thetaplot)+.5
+y = cppsamp$esttheta*sin(cppsamp$thetaplot) +.5
+lines(x,y, lty = 2, lwd = 3)
+
+##############
+# Shiny stuff
+##############
+
+library(shiny)
+
+ui = fluidPage(
+	selectInput(inputId = "shape", label = "Choose either an elliptical or triangular boundary.", choices = c("ellipse", "triangle")),
+	sliderInput(inputId = "n_burn",
+	  label = "Choose a number of posterior samples to burn",
+	  value = 1000, min = 500, max = 1000),
+	sliderInput(inputId = "n_run",
+	  label = "Choose a number of posterior samples to keep",
+	  value = 1000, min = 500, max = 1000),
+	sliderInput(inputId = "p_in",
+	  label = "Choose the Bernoulli success probability inside the image",
+	  value = 0.5, min = 0, max = 1),
+	sliderInput(inputId = "p_out",
+	  label = "Choose the Bernoulli success probability outside the image",
+	  value = 0.2, min = 0, max = 1),
+	actionButton(inputId = "go", label = "Update"),
+	plotOutput("image")
+)
+
+server = function(input, output){
+	
+	data = eventReactive(input$go, {	
+
+	 gamma.fun = ifelse(input$shape=="ellipse",ellipse(a = 0.35, b = 0.25),triangle(0.5))
+	  obs = par2obs(m = 100, pi.in = input$p_in, pi.out = input$p_out, design = 'J', gamma.fun)
+	  rotate <- function(x) t(apply(x, 2, rev))  # rotate closewise by 90 degrees
+	  cppsamp = BayesBDbinary(obs, .4, input$n_run, input$n_burn, 10)
+	  x = cppsamp$esttheta*cos(cppsamp$thetaplot)+.5
+	  y = cppsamp$esttheta*sin(cppsamp$thetaplot) +.5
+	  return(list(obs = obs, x=x, y=y))
+	})
+	
+
+	output$image = renderPlot({
+	  d = data()
+	  image(rotate(d$obs$intensity), axes = FALSE, asp = 1, main = 'observation')
+	  lines(d$x,d$y, lty = 2, lwd = 3)
+      })
+}
+
+shinyApp(ui = ui, server = server)
