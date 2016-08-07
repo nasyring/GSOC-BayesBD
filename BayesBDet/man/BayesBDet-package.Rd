@@ -35,7 +35,7 @@ rotate <- function(x) t(apply(x, 2, rev))  # rotate closewise by 90 degrees
 image(rotate(obs$intensity), axes = FALSE, asp = 1, main = 'observation')
 cppsamp = BayesBDnormal(obs, .4, 4000, 1000, 10, TRUE)
 x = cppsamp$estimate*cos(cppsamp$theta)+obs$center[1]
-y = cppsamp$estimate*sin(cppsamp$theta) +.5obs$center[2]
+y = cppsamp$estimate*sin(cppsamp$theta) +obs$center[2]
 lines(x,y, lty = 2, lwd = 3)
 theta.plot = seq(from = 0, to = 2*pi, length.out = 200)
 my.radial = function(r, theta, ...){
