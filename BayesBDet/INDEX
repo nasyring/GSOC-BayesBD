@@ -1,9 +1,0 @@
-BayesBDbinary           Bayesian boundary estimation for binary images
-BayesBDet-package       Bayesian Inference for Image Boundaries
-BayesBDnormal           Bayesian boundary estimation for continuous
-                        intensity images
-BayesBDshiny            Boundary detection and shiny integration
-ellipse                 Generate ellipse boundaries
-par2obs                 Simulate binary intensity images
-parnormobs              Simulate Gaussian intensity images
-triangle2               Generate triangle boundaries
