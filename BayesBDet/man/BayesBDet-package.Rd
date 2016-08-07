@@ -27,6 +27,7 @@ Li, M. and Ghosal, S.(2015) "Bayesian Detection of Image Boundaries." arXiv 1508
 \examples{
   \dontrun{
 ## Analyzing a continuous image using BayesBDnormal
+require(plotrix)
 par(mfrow = c(1, 2))
 gamma.fun = ellipse(a = 0.35, b = 0.25)
 obs = parnormobs(m = 100, mu.in = 4, mu.out = 1,sd.in = 1.5, sd.out = 1, design = 'J', gamma.fun)
@@ -55,6 +56,7 @@ lines(x,y, lty = 2, lwd = 3)
   }
 \dontrun{
 ## Analyzing a binary image using BayesBDbinary
+require(plotrix)
 set.seed(12345)
 par(mfrow = c(1, 2))
 gamma.fun = ellipse(a = 0.35, b = 0.25)
