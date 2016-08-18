@@ -11,6 +11,8 @@ ui = fluidPage(
 	fileInput(inputId = "shape_file", label = "Use a custom boundary. The file should be an R script of a function called taking as input an angle in [0, 2pi] and returning the radius of the boundary from a reference point."),
 	selectInput(inputId = "data_type", label = "Choose to simulate binary or Gaussian data or input data file below.", choices = c("binary sim", "normal sim", "user binary data", "user normal data")),
 	fileInput(inputId = "data_file", label = "Use image data from file. The file should be in table format with no headers. The first column is for intensity, the second gives the radius from the origin, and the third gives the angle from the origin and positive x-axis."),
+	numericInput(inputId = "center", label = "If using image data from a file, input the X-coordinate and Y-coordinate of the reference point interior to the boundary corresponding to the file data.", value = 2, min = NA, max = NA, step = NA,
+  	width = NULL),
 	sliderInput(inputId = "n_burn",
 	  label = "Choose a number of posterior samples to burn",
 	  value = 1000, min = 500, max = 1000),
@@ -59,6 +61,7 @@ server = function(input, output){
 		obs$intensity = matrix(obs.list[,1],sqrt(length(obs.list[,1])),sqrt(length(obs.list[,1])))
 	 	obs$r.obs = matrix(obs.list[,2],sqrt(length(obs.list[,2])),sqrt(length(obs.list[,2])))
 	 	obs$theta.obs = matrix(obs.list[,3],sqrt(length(obs.list[,3])),sqrt(length(obs.list[,3])))
+	 	obs$center = input$center
 	 } 
 	  if(any(input$data_type == 'binary sim',input$data_type == 'user binary data')){
 	  	cppsamp = BayesBDbinary(obs, .4, input$n_run, input$n_burn, 10, FALSE)
