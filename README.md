@@ -11,6 +11,6 @@ Steps:
   3.  Submit the command: install_github("nasyring/GSOC-BayesBD", subdir = "BayesBDet").
   
 Learning about the package:
-  1.  Bring up documentation using the command ?BayesBDet.
+  1.  Load the package with the command libary(BayesBDet).  Bring up documentation using the command ?BayesBDet.
   2.  Run the examples therein.
   3.  Run BayesBDshiny() to bring up an interactive, html-based version of the package.
