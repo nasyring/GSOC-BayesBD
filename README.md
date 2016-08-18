@@ -7,7 +7,7 @@ To install the BayesBDet package you will need:
   
 Steps:
   1.  Open Rgui.
-  2.  Load the devtools package, library(devtools).
+  2.  Load the devtools package, library(devtools).  First, install it if you have not already by using the fropdown menu "Packages ->       Install package(s)...".
   3.  Submit the command: install_github("nasyring/GSOC-BayesBD", subdir = "BayesBDet").
   
 Learning about the package:
