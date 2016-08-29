@@ -45,7 +45,7 @@ If outputAll is FALSE,
 	\item{theta }{A grid of 200 values on \eqn{[0,2\pi]} at which to retrun the estimated boundary.}
 	\item{lower, upper}{The lower and upper bounds of a \eqn{95\%} uniform credible band for the image boundary.}
 If outputAll is TRUE, same as above, and additionally,
-	\item{pi.smp}{posterior samples of \pi_1 and \pi_2.}
+	\item{pi.smp}{posterior samples of \eqn{\pi_1} and \eqn{\pi_2}.}
 	\item{coef.smp}{posterior samples of Fourier basis function coefficients.}
 }
 \references{
