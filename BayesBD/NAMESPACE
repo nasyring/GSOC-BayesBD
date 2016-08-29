@@ -1,6 +1,0 @@
-useDynLib(BayesBD)
-importFrom(Rcpp, evalCpp)
-import(RcppArmadillo)
-import(shiny)
-import(plotrix)
-exportPattern("^[[:alpha:]]+")
