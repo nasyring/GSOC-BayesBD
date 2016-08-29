@@ -44,7 +44,7 @@ If outputAll is FALSE,
 	\item{theta }{A grid of 200 values on \eqn{[0,2\pi]} at which to retrun the estimated boundary.}
 	\item{lower, upper}{The lower and upper bounds of a \eqn{95\%} uniform credible band for the image boundary.}
 If outputAll is TRUE, same as above, and additionally,
-	\item{musig.smp}{posterior samples of \mu_1, \mu_2, \sigma_1, and \sigma_2.}
+	\item{musig.smp}{posterior samples of \eqn{\mu_1}, \eqn{\mu_2}, \eqn{\sigma_1}, and \eqn{\sigma_2}.}
 	\item{coef.smp}{posterior samples of Fourier basis function coefficients.}
 }
 \references{
