@@ -89,12 +89,24 @@ BayesBDshiny = function ()
             par(mfrow = c(1, 2), mar = c(3, 2, 2, 2))
             image(rotate(d$obs$intensity), axes = FALSE, asp = 1)
             if (d$shape != "unknown") {
+		image(rotate(d$obs$intensity), axes = FALSE, asp = 1)
 		x = d$obs$gamma.fun(theta.plot)*cos(theta.plot)+d$obs$center[1]
 		y = d$obs$gamma.fun(theta.plot)*sin(theta.plot)+d$obs$center[2]
-		plot(x,y, lty = 1, lwd = 1,type="n", axes=FALSE, frame.plot=FALSE, xlab = "", ylab = "")
+		max_x = max(d$obs$r.obs*cos(d$obs$theta.obs)+d$obs$center[1])
+		min_x = min(d$obs$r.obs*cos(d$obs$theta.obs)+d$obs$center[1])
+		max_y = max(d$obs$r.obs*sin(d$obs$theta.obs)+d$obs$center[2])
+		min_y = min(d$obs$r.obs*sin(d$obs$theta.obs)+d$obs$center[2])
+		polygon(c(max_x+1, max_x+1, min_x-1, min_x-1), c(max_y+1, min_y-1, min_y-1, max_y+1), fillOddEven = TRUE, col = "white", border = NA)
+		lines(x,y, lty = 1, lwd = 1)
             }
             else {
-                plot(d$x, d$y, lty = 2, lwd = 3, type = "n", axes = FALSE, frame.plot = FALSE, xlab = "", ylab = "")
+		image(rotate(d$obs$intensity), axes = FALSE, asp = 1)
+		max_x = max(d$obs$r.obs*cos(d$obs$theta.obs)+d$obs$center[1])
+		min_x = min(d$obs$r.obs*cos(d$obs$theta.obs)+d$obs$center[1])
+		max_y = max(d$obs$r.obs*sin(d$obs$theta.obs)+d$obs$center[2])
+		min_y = min(d$obs$r.obs*sin(d$obs$theta.obs)+d$obs$center[2])
+		polygon(c(max_x+1, max_x+1, min_x-1, min_x-1), c(max_y+1, min_y-1, min_y-1, max_y+1), fillOddEven = TRUE, col = "white", border = NA)
+	            lines(d$x, d$y, lty = 2, lwd = 3)
             }
             polygon(d$ux, d$uy, fillOddEven = TRUE, col = "gray", 
                 border = NA)
