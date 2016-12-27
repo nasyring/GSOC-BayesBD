@@ -1,0 +1,8 @@
+useDynLib(BayesBD)
+importFrom(Rcpp, evalCpp)
+import(shiny)
+importFrom("graphics", "image", "lines", "par", "plot", "polygon")
+importFrom("stats", "rbinom", "rnorm", "runif")
+importFrom("utils", "read.table", "read.csv", "write.csv")
+importFrom("grDevices", "gray")
+exportPattern("^[[:alpha:]]+")
