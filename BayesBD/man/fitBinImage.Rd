@@ -1,26 +1,27 @@
-\name{BayesBDbinary}
-\alias{BayesBDbinary}
-%- Also NEED an '\alias' for EACH other topic documented here.
+\name{fitBinImage}
+\alias{fitBinImage}
+
 \title{
-Bayesian boundary estimation for binary images
+Data pre-processing and binary image analysis
 }
 \description{
-
-Estimate boundaries in a binary image.  This function may be used directly with list objects with the format of par2obs output.
-
+This function can be used to analyze a binary image in .png or .jpeg,
+ or an image represented as a list object in the format of par2obs.
 }
 \usage{
-BayesBDbinary(obs, inimean, nrun, nburn, J, ordering, mask, slice, outputAll)
+fitBinImage(image, gamma.fun = NULL, center = NULL, inimean, nrun,
+ nburn, J, ordering, mask = rep(1,length(obs$intensity)), slice, outputAll)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
-  \item{obs}{
-	The noisy observation which is a list with the following required elements:
-	\itemize{
-	\item{intensity: }{observed intensity at each pixel.}
-	\item{theta.obs, r.obs: }{the location of the pixel at which the intensity is observed, using polar coordinates with respect to a reference point.}
-	\item{center: }{the reference point for polar coords (theta.obs, r.obs).}}
-
+  \item{image}{
+	This may be a string representing the path to a .png or .jpeg file, or a list object in the same format as par2obs output, with intensity, r.obs, theta.obs, and center the required list contents.
+}
+  \item{gamma.fun}{
+	This is a function, like triangle2 or ellipse, denoting the true boundary.  It is optional and only used when the image input refers to a .png or .jpeg file.
+}
+  \item{center}{
+	This is required if the image input refers to a .png or .jpeg file, otherwise it is unused.
 }
   \item{inimean}{
 	a constant to specify the initial mean functions in the Bayesian estimation.
@@ -48,19 +49,21 @@ BayesBDbinary(obs, inimean, nrun, nburn, J, ordering, mask, slice, outputAll)
 }
 }
 \value{
+\item{output}{
 If outputAll is FALSE,
 	\item{estimate }{Posterior mean estimate of image boundary at theta values.}
 	\item{theta }{A grid of 200 values on \eqn{[0,2\pi]} at which to retrun the estimated boundary.}
 	\item{lower, upper}{The lower and upper bounds of a \eqn{95\%} uniform credible band for the image boundary.}
 If outputAll is TRUE, same as above, and additionally,
-	\item{pi.smp}{posterior samples of \eqn{\pi_1} and \eqn{\pi_2}.}
+	\item{musig.smp}{posterior samples of \eqn{\mu_1}, \eqn{\mu_2}, \eqn{\sigma_1}, and \eqn{\sigma_2}.}
 	\item{coef.smp}{posterior samples of Fourier basis function coefficients.}
 }
-
-\seealso{
-   \code{\link{fitBinImage}}
+\item{image}{the input image passed to fitBinImage.}
+\item{obs}{the processed image data passed to BayesBDbinary.}
 }
-
+\seealso{
+   \code{\link{par2obs}}
+}
 \references{
 Li, M. and Ghosal, S.(2015) "Bayesian Detection of Image Boundaries." arXiv 1508.05847.
 }
@@ -69,8 +72,11 @@ set.seed(12345)
 gamma.fun = ellipse(a = 0.35, b = 0.25)
 bin.obs = par2obs(m = 100, pi.in = 0.5, pi.out = 0.2, design = 'J', center = c(0.5,0.5), gamma.fun)
 \dontrun{
-bin.samp = BayesBDbinary(bin.obs, .4, 1000, 0, 10,"I", rep(1,10000),TRUE, FALSE)
-plotBD(bin.obs, bin.samp)
+bin.samp = fitBinImage(bin.obs,NULL,NULL, .4, 1000, 0, 10,"I", rep(1,10000),FALSE, FALSE)
+par(mfrow = c(1,3))
+plotBD(bin.samp, 1)
+plotBD(bin.samp, 2)
+plotBD(bin.samp, 3)
 }
 }
 

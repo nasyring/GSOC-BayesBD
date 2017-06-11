@@ -1,24 +1,30 @@
-\name{BayesBDnormal}
-\alias{BayesBDnormal}
+\name{fitContImage}
+\alias{fitContImage}
 %- Also NEED an '\alias' for EACH other topic documented here.
 \title{
-Bayesian boundary estimation for continuous intensity images
+Data pre-processing and continuous image analysis
 }
 \description{
-Estimate boundaries in a continuous intensity image.
+This function can be used to analyze a continuous image in .png or .jpeg format, or an image represented as a list object in the format of parnormobs.
 }
 \usage{
-BayesBDnormal(obs, inimean, nrun, nburn, J, ordering_mu, 
-ordering_sigma, mask, slice, outputAll)
+fitContImage(image, gamma.fun = NULL, center = NULL, inimean, nrun,
+ nburn, J, ordering_mu, ordering_sigma, mask, slice, outputAll)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
-  \item{obs}{
-	The noisy observation which is a list with the following required elements:
-	\itemize{
-	\item{intensity: }{observed intensity at each pixel.}
-	\item{theta.obs, r.obs: }{the location of the pixel at which the intensity is observed, using polar coordinates with respect to a reference point.}
-	\item{center: }{the reference point for polar coords (theta.obs, r.obs).}}
+  \item{image}{
+	This may be a string representing the path to a .png or .jpeg file,
+        or a list object in the same format as par2obs output, with intensity,
+        r.obs, theta.obs, and center the required list contents.
+}
+  \item{gamma.fun}{
+	This is a function, like triangle2 or ellipse, denoting the true boundary.
+        It is optional and only used when the image input refers to a .png or .jpeg file.
+}
+  \item{center}{
+	This is required if the image input refers to a .png or .jpeg file,
+	otherwise it is unused.
 }
   \item{inimean}{
 	a constant to specify the initial mean functions in the Bayesian estimation.
@@ -49,6 +55,7 @@ ordering_sigma, mask, slice, outputAll)
 }
 }
 \value{
+\item{output}{
 If outputAll is FALSE,
 	\item{estimate }{Posterior mean estimate of image boundary at theta values.}
 	\item{theta }{A grid of 200 values on \eqn{[0,2\pi]} at which to retrun the estimated boundary.}
@@ -57,11 +64,12 @@ If outputAll is TRUE, same as above, and additionally,
 	\item{musig.smp}{posterior samples of \eqn{\mu_1}, \eqn{\mu_2}, \eqn{\sigma_1}, and \eqn{\sigma_2}.}
 	\item{coef.smp}{posterior samples of Fourier basis function coefficients.}
 }
-
-\seealso{
-   \code{\link{fitContImage}}
+\item{image}{the input image passed to fitContImage.}
+\item{obs}{the processed image data passed to BayesBDnormal.}
 }
-
+\seealso{
+   \code{\link{parnormobs}}
+}
 \references{
 Li, M. and Ghosal, S.(2015) "Bayesian Detection of Image Boundaries." arXiv 1508.05847.
 }
@@ -71,7 +79,10 @@ gamma.fun = ellipse(a = 0.35, b = 0.25)
 norm.obs = parnormobs(m = 100, mu.in = 4, mu.out = 1, sd.in = 1.5, sd.out = 1, design = 'J',
  center = c(0.5,0.5), gamma.fun)
 \dontrun{
-norm.samp = BayesBDnormal(norm.obs, .4, 1000, 0, 10,"I","I",rep(1,10000), TRUE, FALSE)
-plotBD(norm.obs, norm.samp)
+norm.samp = fitContImage(norm.obs, NULL,NULL,.4, 1000, 0, 10,"I","I",rep(1,10000), FALSE, FALSE)
+par(mfrow = c(1,3))
+plotBD(norm.samp, 1)
+plotBD(norm.samp, 2)
+plotBD(norm.samp, 3)
 }
 }

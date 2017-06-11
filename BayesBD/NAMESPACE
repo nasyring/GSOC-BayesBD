@@ -1,6 +1,7 @@
 useDynLib(BayesBD)
 importFrom(Rcpp, evalCpp)
 import(shiny)
+importFrom("png", "readPNG")
 importFrom("graphics", "image", "lines", "par", "plot", "polygon")
 importFrom("stats", "rbinom", "rnorm", "runif")
 importFrom("utils", "read.table", "read.csv", "write.csv")

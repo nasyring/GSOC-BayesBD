@@ -8,24 +8,25 @@ Visualization of posterior boundary estimates and data
 Produces plots of image data, posterior boundary estimates, and 95% uniform credible bands.
 }
 \usage{
-plotBD(obs, samples = list())
+
+plotBD(fitted.image, plot.type)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
-  \item{obs}{
-	The noisy observation which is a list with the following required elements:
-	\itemize{
-	\item{intensity: }{observed intensity at each pixel.}
-	\item{theta.obs, r.obs: }{the location of the pixel at which the intensity is observed, using polar coordinates with respect to a reference point.}
-	\item{center: }{the reference point for polar coords (theta.obs, r.obs).}}
-
+  \item{fitted.image}{
+	An object containing the output of either fitBinImage or fitContImage.
 }
-  \item{samples}{
-	output from either BayesBDbinary or BayesBDnormal.  Defaults to NA.  If NA, plots only the data from obs.
+  \item{plot.type}{
+	takes values 1, 2 or 3:
+	itemize{
+		\item{1}{ to plot the data only;}
+		\item{2}{ to plot the estimate and 95% uniform credible bands;}
+		\item{3}{ to plot the data with the estimated boundary overlaid.}}
 }
 }
 \value{
-	There is no output to console. plotBD produces two plots in one window, on the left is the image data, and on the right is the posterior mean boundary, 95% uniform credible bands, and true boundary if available.
+	There is no output to console; plotBD produces plots.
+
 }
 \references{
 Li, M. and Ghosal, S.(2015) "Bayesian Detection of Image Boundaries." arXiv 1508.05847.
@@ -34,7 +35,13 @@ Li, M. and Ghosal, S.(2015) "Bayesian Detection of Image Boundaries." arXiv 1508
 set.seed(12345)
 gamma.fun = ellipse(a = 0.35, b = 0.25)
 bin.obs = par2obs(m = 100, pi.in = 0.5, pi.out = 0.2, design = 'J', center = c(0.5,0.5), gamma.fun)
-plotBD(bin.obs)
+
+bin.fit = fitBinImage(bin.obs,inimean=.2, nrun=1000, nburn=1000, J=10, ordering='I', mask = rep(1,length(obs$intensity)), slice=FALSE, outputAll=FALSE)
+par(mfrow = c(1,3))
+plotBD(bin.fit, 1)
+plotBD(bin.fit, 2)
+plotBD(bin.fit, 3)
+
 }
 
 

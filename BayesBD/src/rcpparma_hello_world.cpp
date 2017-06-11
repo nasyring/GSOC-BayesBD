@@ -50,6 +50,7 @@ Rcpp::List result;
 int s					= thetaobs.size();
 int L                  		= 2*i_J+1;
 int betatau           		= 1;
+
 double alphatau                 = 500.0;
 int alpha_a      		= 2;
 int beta_a       		= 1;
@@ -67,7 +68,9 @@ arma::colvec eigencnk   	= arma::colvec(1); eigencnk.fill(0.0);
 arma::colvec ank   	      = arma::colvec(1); ank.fill(0.0); 
 arma::colvec astar   	      = arma::colvec(1); astar(0)=0.0;
 arma::colvec bstar   	      = arma::colvec(1); bstar(0)=0.0;
+
 arma::colvec tauinirg   	= arma::colvec(1); tauinirg(0)=500.0;
+
 arma::colvec x1 			= arma::colvec(1); x1.fill(0.0); 
 arma::colvec x2 			= arma::colvec(1); x2.fill(0.0);
 arma::colvec piin1 		= arma::colvec(1); piin1.fill(0.0);
