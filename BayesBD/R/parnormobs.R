@@ -16,7 +16,9 @@ function (m, mu.in, mu.out, sd.in, sd.out, design, center, gamma.fun) {
 	y.axis = matrix(runif(m^2, 0, 1),m,m)
     }
     r.obs = sqrt((x.axis - center[1])^2 + (y.axis - center[2])^2)
+
     theta.obs <- atan2(y.axis - center[2], x.axis - center[1])
+
     theta.obs[theta.obs < 0] = theta.obs[theta.obs < 0] + 2 * 
         pi
     obsLabel = (r.obs < gamma.fun(theta.obs))

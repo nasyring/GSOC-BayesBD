@@ -1,4 +1,5 @@
 plotBD =
+
 function (fitted.image, plot.type) 
 {
 

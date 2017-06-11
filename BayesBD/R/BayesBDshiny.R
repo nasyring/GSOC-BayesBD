@@ -3,6 +3,7 @@ BayesBDshiny = function ()
     ui = pageWithSidebar(
 	titlePanel("BayesBD"),
       sidebarPanel(selectInput(inputId = "shape", label = "Choose either an elliptical, triangular, or user-supplied boundary, or indicate that the ground truth is unknown.", 
+
         choices = c("ellipse", "triangle", "file", "unknown")),
 	numericInput(inputId = "mean", label = "Input the default mean boundary radius to begin fitting the model.", 
             value = 0.2, min = 0, max = 1, step = NA, width = NULL),
@@ -17,10 +18,13 @@ BayesBDshiny = function ()
 	textInput(inputId = "data_file",value="", 
             label = "Use image from file. The file should be in .png or .jpeg format. Type the full path here."),
 	actionButton(inputId = "go_plot", label = "Display Image")), 
+
+
 	numericInput(inputId = "centerx", label = "Input the X-coordinate and Y-coordinate of the reference point interior to the boundary function.", 
             value = 0.5, min = NA, max = NA, step = NA, width = NULL), 
         numericInput(inputId = "centery", label = "Y-coordinate of the reference point.", 
             value = 0.5, min = NA, max = NA, step = NA, width = NULL), 
+
 	conditionalPanel( 
 	condition = "input.data_type == 'user binary image' || input.data_type == 'user continuous image'", 
         selectInput(inputId = "pre_fit", label = "Choose if you would like to fit the boundary twice to filter the background.", 
@@ -41,6 +45,8 @@ BayesBDshiny = function ()
             choices = c("Inside", "Outside", "Unknown"))),
 	conditionalPanel( 
 	condition = "input.data_type == 'normal sim'",
+
+
         numericInput(inputId = "mu_in", label = "Mean intensity inside image", 
             value = 1, min = NA, max = NA, step = NA, width = NULL), 
         numericInput(inputId = "sd_in", label = "Standard deviation inside image", 
@@ -48,6 +54,7 @@ BayesBDshiny = function ()
         numericInput(inputId = "mu_out", label = "Mean intensity outside image", 
             value = 0, min = NA, max = NA, step = NA, width = NULL), 
         numericInput(inputId = "sd_out", label = "Standard deviation outside image", 
+
             value = 1, min = 0, max = NA, step = NA, width = NULL)), 
 	conditionalPanel( 
 	condition = "input.data_type == 'normal sim' || input.data_type == 'user continuous image'",
@@ -66,10 +73,13 @@ BayesBDshiny = function ()
   		
 			
 	)
+
+
     
 
      server = function(input, output) {
         theta.plot = seq(from = 0, to = 2 * pi, length.out = 200)
+
         pre_plot = eventReactive(input$go_plot, {
 		image = input$data_file
 		cppsamp = fitContImage(image, NULL, c(0,0), .1, 1, 
@@ -82,6 +92,7 @@ BayesBDshiny = function ()
 	output$info <- renderText({
     		if(input$data_type == 'user binary image' || input$data_type == 'user continuous image'){paste0("x=", input$plot_click$x, "\ny=", input$plot_click$y)}
   	})
+
         data = eventReactive(input$go, {
             center = c(input$centerx, input$centery)
             if (input$shape == "ellipse") {
@@ -94,6 +105,7 @@ BayesBDshiny = function ()
                 gamma.fun = source(input$shape_file$datapath)$value
             }
             else {
+
                 gamma.fun = NULL
             }
             if (input$data_type == "binary sim") {
@@ -102,11 +114,13 @@ BayesBDshiny = function ()
             }
             else if (input$data_type == "normal sim") {
                 image = parnormobs(m = 100, mu.in = input$mu_in, 
+
                   mu.out = input$mu_out, sd.in = input$sd_in, 
                   sd.out = input$sd_out, design = "J", center, 
                   gamma.fun)
             }
             else {
+
                 image = input$data_file
             }
             if (any(input$data_type == "binary sim", input$data_type == 
@@ -118,6 +132,7 @@ BayesBDshiny = function ()
                   input$n_burn, 10,ordero,NULL, FALSE, FALSE)
             }
             else {
+
 		if(input$ordering_mu=="Inside"){
 			order_mu = "I"
 		}else if(input$ordering_mu == "Outside"){
@@ -131,6 +146,7 @@ BayesBDshiny = function ()
 			order_sd = "O"
 		}else{
 			order_sd = "N"
+
 		}    
             cppsamp1 = fitContImage(image, gamma.fun, center, input$mean, input$n_run, 
                   input$n_burn, 10,order_mu,order_sd,NULL, FALSE, FALSE)
@@ -202,6 +218,7 @@ output$downloadData <- downloadHandler(
 	out = cbind(as.vector(d$cppsamp1$obs$r.obs), as.vector(d$cppsamp1$obs$theta.obs), as.vector(d$cppsamp1$obs$intensity), as.vector(d$cppsamp1$subset))
     }
       write.table(out, file)
+
     }
   )
     }

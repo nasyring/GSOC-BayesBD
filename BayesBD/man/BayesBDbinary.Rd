@@ -5,7 +5,9 @@
 Bayesian boundary estimation for binary images
 }
 \description{
+
 Estimate boundaries in a binary image.  This function may be used directly with list objects with the format of par2obs output.
+
 }
 \usage{
 BayesBDbinary(obs, inimean, nrun, nburn, J, ordering, mask, slice, outputAll)
@@ -54,9 +56,11 @@ If outputAll is TRUE, same as above, and additionally,
 	\item{pi.smp}{posterior samples of \eqn{\pi_1} and \eqn{\pi_2}.}
 	\item{coef.smp}{posterior samples of Fourier basis function coefficients.}
 }
+
 \seealso{
    \code{\link{fitBinImage}}
 }
+
 \references{
 Li, M. and Ghosal, S.(2015) "Bayesian Detection of Image Boundaries." arXiv 1508.05847.
 }

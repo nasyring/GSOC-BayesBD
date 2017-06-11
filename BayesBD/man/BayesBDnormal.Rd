@@ -57,9 +57,11 @@ If outputAll is TRUE, same as above, and additionally,
 	\item{musig.smp}{posterior samples of \eqn{\mu_1}, \eqn{\mu_2}, \eqn{\sigma_1}, and \eqn{\sigma_2}.}
 	\item{coef.smp}{posterior samples of Fourier basis function coefficients.}
 }
+
 \seealso{
    \code{\link{fitContImage}}
 }
+
 \references{
 Li, M. and Ghosal, S.(2015) "Bayesian Detection of Image Boundaries." arXiv 1508.05847.
 }
