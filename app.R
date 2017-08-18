@@ -5,29 +5,14 @@
 ###
 library(Rcpp)
 library(RcppArmadillo)
+library(png)
+library(jpeg)
 
-cppFunction('double eigenfun(SEXP & kn, SEXP & ix) { 
-	int n = Rcpp::as<int>(kn); double x = Rcpp::as<double>(ix);
-	int k1 = n%2;
-    	double k2 = (n - k1)/2;
-	double ret = 0;
-   	if (n == 1) {
-       		 ret = 1/sqrt(2 * M_PI) + 0 * x;
-    	}
-    	if (n > 1) {
-        	if (k1 == 0) {
-            		 ret = 1/sqrt(M_PI) * cos(k2 * x);
-        	}
-       		if (k1 == 1) {
-            		 ret = 1/sqrt(M_PI) * sin(k2 * x);
-       		}
-    }
-    return ret;
-}')
 
-cppFunction(depends = "RcppArmadillo",'Rcpp::List unisliceL(SEXP & ix0, SEXP & igx0, SEXP & ii_J, SEXP & itauini, SEXP & ianini, SEXP & ialpha_a, SEXP & ibeta_a, SEXP & ilambdaini, SEXP & besselIa){
+
+cppFunction(depends = "RcppArmadillo",'Rcpp::List unisliceL(SEXP & ix0, SEXP & igx0, SEXP & ii_J, SEXP & itauini, SEXP & ianini, SEXP & ialpha_a, SEXP & ibeta_a, SEXP & ilambdaini, SEXP & besselIs){
 RNGScope scope;
-Rcpp::Function besselIs = Rcpp::as<Function>(besselIa);
+Rcpp::Function besselIa = Rcpp::as<Function>(besselIs);
 arma::colvec x0 = Rcpp::as<arma::colvec>(ix0);
 arma::colvec gx0 = Rcpp::as<arma::colvec>(igx0);
 int i_J = Rcpp::as<int>(ii_J);
@@ -64,7 +49,7 @@ while( res1 ){
 		else {
 			calc1 = 2*M_PI*std::exp(-2.0*L(0));
 			for(int i=0; i<(i_J+1); i++){
-				cnini(i) = calc1(0)*Rcpp::as<double>(besselIs(2*L,i));
+				cnini(i) = calc1(0)*Rcpp::as<double>(besselIa(2*L,i));
 			}
 			eigencnini(0) = cnini(0);
 			for(int i=1; i<(i_J+1); i++){
@@ -93,7 +78,7 @@ while( res1 ){
 		else {
 			calc1 = 2*M_PI*std::exp(-2.0*R(0));
 			for(int i=0; i<(i_J+1); i++){
-				cnini(i) = calc1(0)*Rcpp::as<double>(besselIs(2*R,i));
+				cnini(i) = calc1(0)*Rcpp::as<double>(besselIa(2*R,i));
 			}
 			eigencnini(0) = cnini(0);
 			for(int i=1; i<(i_J+1); i++){
@@ -131,7 +116,7 @@ while( res1 ){
 			x1 = Rcpp::runif(1, L(0), R(0));
 			calc1 = 2*M_PI*std::exp(-2.0*x1(0));
 			for(int i=0; i<(i_J+1); i++){
-				cnini(i) = calc1(0)*Rcpp::as<double>(besselIs(2*x1,i));
+				cnini(i) = calc1(0)*Rcpp::as<double>(besselIa(2*x1,i));
 			}
 			eigencnini(0) = cnini(0);
 			for(int i=1; i<(i_J+1); i++){
@@ -154,22 +139,38 @@ while( res1 ){
 }')
 
 
+# This c++ function computes the nth eigenfunction of the SEP kernel.  It is used by
+# BayesBDbinary below.
 
 
+cppFunction('double eigenfun(SEXP & iin, SEXP & ix) { 
+	int n = Rcpp::as<int>(iin); double x = Rcpp::as<double>(ix);
+	int k1 = n%2;
+    	double k2 = (n - k1)/2;
+	double ret = 0.0;
+   	if (n == 1) {
+       		 ret = 1/sqrt(2 * M_PI) + 0 * x;
+    	}
+    	if (n > 1) {
+        	if (k1 == 0) {
+            		 ret = 1/sqrt(M_PI) * cos(k2 * x);
+        	}
+       		if (k1 == 1) {
+            		 ret = 1/sqrt(M_PI) * sin(k2 * x);
+       		}
+    }
+    return ret;
+}')
 
 # This c++ function is a translation to c++ of the BayesBD.binary R function above.  It
 # produces posterior samples of the boundary of a binary image.  The output is a set of
 # boundary values at 200 points, to be plotted on the image. 
 
-cppFunction(depends = "RcppArmadillo",'Rcpp::List BayesBDbinary(SEXP & obs, SEXP & inimean, SEXP & nrun, SEXP & nburn, SEXP & J, SEXP & ordering, SEXP & slice, SEXP & outputAll, SEXP & bessel, SEXP & eigenfuna, SEXP & unisliceLa) { 
+cppFunction(depends = "RcppArmadillo",'Rcpp::List BayesBDbinary(SEXP & obs, SEXP & inimean, SEXP & nrun, SEXP & nburn, SEXP & J, SEXP & ordering, SEXP & slice, SEXP & outputAll, Rcpp::Function eigenfun, SEXP & besselIs, Rcpp::Function unisliceL) { 
 
 // Including additional user-defined Rcpp functions
 RNGScope scp;
-Rcpp::Function besselIs = Rcpp::as<Function>(bessel);
-Rcpp::Function eigenfun = Rcpp::as<Function>(eigenfuna);
-Rcpp::Function unisliceL = Rcpp::as<Function>(unisliceLa);
-
-
+Rcpp::Function besselIa = Rcpp::as<Function>(besselIs);
 // Extracting the inputs
 Rcpp::List 		      	obsL(obs);
 arma::colvec thetaobs 	 	= Rcpp::as<arma::colvec>(obsL["theta.obs"]);
@@ -193,7 +194,7 @@ Rcpp::List result;
 int s					= thetaobs.size();
 int L                  		= 2*i_J+1;
 int betatau           		= 1;
-double alphatau                 = 500.0;
+double alphatau                 = 100.0;
 int alpha_a      		= 2;
 int beta_a       		= 1;
 double alpha_1                  = 0.0;
@@ -210,7 +211,7 @@ arma::colvec eigencnk   	= arma::colvec(1); eigencnk.fill(0.0);
 arma::colvec ank   	      = arma::colvec(1); ank.fill(0.0); 
 arma::colvec astar   	      = arma::colvec(1); astar(0)=0.0;
 arma::colvec bstar   	      = arma::colvec(1); bstar(0)=0.0;
-arma::colvec tauinirg   	= arma::colvec(1); tauinirg(0)=500.0;
+arma::colvec tauinirg   	= arma::colvec(1); tauinirg(0)=100.0;
 arma::colvec x1 			= arma::colvec(1); x1.fill(0.0); 
 arma::colvec x2 			= arma::colvec(1); x2.fill(0.0);
 arma::colvec piin1 		= arma::colvec(1); piin1.fill(0.0);
@@ -305,7 +306,7 @@ pioutini = piout1 / piout2;
 
 calc1 = 2*M_PI*std::exp(-2.0*lambdaini(0));
 for(int i=0; i<(i_J+1); i++){
-	cnini(i) = calc1(0)*Rcpp::as<double>(besselIs(max(2*lambdaini,0.0),i));
+	cnini(i) = calc1(0)*Rcpp::as<double>(besselIa(max(2*lambdaini,0.0),i));
 }
 
 eigencnini(0) = cnini(0);
@@ -530,7 +531,7 @@ betaini = log((1 - piinini)/(1 - pioutini));
 
 gx0 = -1/2 * (sum(log(eigencnini)) + tauinirg * interim) + (alpha_a - 1) * log(lambdaini) - beta_a;
 
-lambdalist = unisliceL(lambdaini, gx0, i_J, tauinirg, anini,  alpha_a,  beta_a, lambdaini,besselIs);
+lambdalist = unisliceL(lambdaini, gx0, i_J, tauinirg, anini,  alpha_a,  beta_a, lambdaini, besselIa);
 lambdaini = Rcpp::as<NumericVector>(lambdalist["x1"]);
 
 if(i > i_nburn){
@@ -606,12 +607,10 @@ return result;
 # either slice or MH sampling for the 'z' parameter (the coefficients of eigenfunctions), 
 # depending on the value of the 'Sample' input, TRUE for slice sampling
 
-cppFunction(depends = "RcppArmadillo",'Rcpp::List BayesBDnormal(SEXP & obs, SEXP & inimean, SEXP & nrun, SEXP & nburn, SEXP & J, SEXP & ordering_mu, SEXP & ordering_sigma, SEXP & slice, SEXP & outputAll, SEXP & besselIa, SEXP & eigenfuna) { 
+cppFunction(depends = "RcppArmadillo",'Rcpp::List BayesBDnormal(SEXP & obs, SEXP & inimean, SEXP & nrun, SEXP & nburn, SEXP & J, SEXP & ordering_mu, SEXP & ordering_sigma, SEXP & slice, SEXP & outputAll, Rcpp::Function eigenfun, Rcpp::Function besselIa) { 
 
 // Including additional user-defined Rcpp functions
 RNGScope scp;
-Rcpp::Function besselIs = Rcpp::as<Function>(besselIa);
-Rcpp::Function eigenfun = Rcpp::as<Function>(eigenfuna);
 
 
 // Extracting the inputs
@@ -717,7 +716,7 @@ for (int i=0; i<s; i++) {
 
 calc1 = 2.0*M_PI*std::exp(-2.0*lambdaini(0));
 for(int i=0; i<(i_J+1); i++){
-	cnini(i) = calc1(0)*Rcpp::as<double>(besselIs(2.0*lambdaini,i));
+	cnini(i) = calc1(0)*Rcpp::as<double>(besselIa(2.0*lambdaini,i));
 }
 
 eigencnini(0) = cnini(0);
@@ -963,7 +962,7 @@ while( res1 ){												// begin slice sampling of a
 		else {
 			calc1 = 2*M_PI*std::exp(-2.0*LL(0));
 			for(int i=0; i<(i_J+1); i++){
-				cnini(i) = calc1(0)*Rcpp::as<double>(besselIs(2*LL,i));
+				cnini(i) = calc1(0)*Rcpp::as<double>(besselIa(2*LL,i));
 			}
 			eigencnini(0) = cnini(0);
 			for(int i=1; i<(i_J+1); i++){
@@ -992,7 +991,7 @@ while( res1 ){												// begin slice sampling of a
 		else {
 			calc1 = 2*M_PI*std::exp(-2.0*R(0));
 			for(int i=0; i<(i_J+1); i++){
-				cnini(i) = calc1(0)*Rcpp::as<double>(besselIs(2*R,i));
+				cnini(i) = calc1(0)*Rcpp::as<double>(besselIa(2*R,i));
 			}
 			eigencnini(0) = cnini(0);
 			for(int i=1; i<(i_J+1); i++){
@@ -1030,7 +1029,7 @@ while( res1 ){												// begin slice sampling of a
 			x1 = Rcpp::runif(1, LL(0), R(0));
 			calc1 = 2*M_PI*std::exp(-2.0*x1(0));
 			for(int i=0; i<(i_J+1); i++){
-				cnini(i) = calc1(0)*Rcpp::as<double>(besselIs(2*x1,i));
+				cnini(i) = calc1(0)*Rcpp::as<double>(besselIa(2*x1,i));
 			}
 			eigencnini(0) = cnini(0);
 			for(int i=1; i<(i_J+1); i++){
@@ -1115,6 +1114,7 @@ arma::colvec lower = arma::colvec(200);
 arma::colvec upper = arma::colvec(200);
 lower = esttheta - sortval%pow(variance,0.5);
 upper = esttheta + sortval%pow(variance,0.5);
+
 if(output_All[0] == TRUE){result = Rcpp::List::create(Rcpp::Named("estimate") = esttheta,Rcpp::Named("theta") = thetaplot,Rcpp::Named("lower") = lower,Rcpp::Named("upper") = upper, Rcpp::Named("musig.smp") = musigsmp, Rcpp::Named("coef.smp") = ansmp);}
 else{result = Rcpp::List::create(Rcpp::Named("estimate") = esttheta,Rcpp::Named("theta") = thetaplot,Rcpp::Named("lower") = lower,Rcpp::Named("upper") = upper);}
 
@@ -1238,32 +1238,459 @@ ellipse <- function (a, b, r0 = 0, theta0 = 0, phi = 0)
         return(r)
     }
 }
+
+
+fitBinImage = function(image, gamma.fun = NULL, center = NULL, inimean = NULL, nrun, nburn, J, ordering, mask = NULL, slice, outputAll, eigenfun, besselIs, unisliceL){
+
+	if(!is.list(image)){
+		img=image
+		if(length(dim(img))>2){
+			img = matrix(img[,,1],dim(img)[1],dim(img)[2])
+		}else {
+			img = img
+		}
+
+		n1 = nrow(img)
+		n2 = ncol(img)
+
+		img_flip = img
+	
+		for(i in 1:n1){
+			for(j in 1:n2){
+				img_flip[i,j] = img[n1-i+1,j]
+			}
+		}
+
+		img = img_flip
+
+		if(any(center[1]>n2,center[2]>n1,center[1]<0,center[2]<0)){
+			return(paste('The center should be a pixel (x,y) between 0 and ', ncol(img), 'for x, and 0 and ', nrow(img), ' for y.'))
+		}
+
+		r.obs = img
+		theta.obs = img
+		intensity = img
+		for(i in 1:n1){
+			for(j in 1:n2){
+				r.obs[i,j] = sqrt(((i - center[2])/n1)^2 + ((j - center[1])/n2)^2)
+				theta.obs[i,j] = atan2((i - center[2])/n1, (j - center[1])/n2)
+				theta.obs[theta.obs < 0] = theta.obs[theta.obs < 0] + 2*pi
+			}
+		}
+
+		r.obs = as.vector(r.obs)
+		theta.obs = as.vector(theta.obs)
+		intensity = as.vector(intensity)
+
+		obs = list(r.obs = r.obs, theta.obs = theta.obs, intensity = intensity, center=center)
+
+		if(is.null(mask)){
+			mask = rep(1,length(obs$intensity))
+		}else {
+			center = obs$center
+			new.r.obs = obs$r.obs[mask==1]
+			new.theta.obs = obs$theta.obs[mask==1]
+			new.intensity = obs$intensity[mask==1]
+			obs = list(r.obs=new.r.obs, theta.obs = new.theta.obs, intensity=new.intensity, center=center)
+		}	
+
+		if(is.null(inimean)){
+			ini.mean.estimator = function(r){
+				obs.in = obs$intensity[which(obs$r.obs<r)]
+				obs.out = obs$intensity[which(obs$r.obs>=r)]
+				p.in=mean(obs.in)
+				p.out=mean(obs.out)
+				log_lhood = sum(obs.in)*p.in+sum(1-obs.in)*(1-p.in)+sum(obs.out)*p.out+sum(1-obs.out)*(1-p.out)
+				if(any(ordering=="I" & p.in>p.out,ordering=="O" & p.in<p.out,ordering=="N")){
+					return(log_lhood)
+				}else {
+					return(-Inf)
+				}
+			}
+			eval_seq = seq(from = min(obs$r.obs)+0.02, to = min(0.5,max(obs$r.obs))-0.02, by=0.01 )
+			len=length(eval_seq)
+			evals=rep(0,len)
+			for(i in 1:len){evals[i]=ini.mean.estimator(eval_seq[i])}
+			inimean = eval_seq[which.max(evals)] 
+		}
+
+		output = BayesBDbinary(obs, inimean, nrun, nburn, J, ordering, slice, outputAll, eigenfun, besselIs, unisliceL)
+		return(list(image = image, center = center, gamma.fun = gamma.fun, output = output, obs = obs))
+
+	}else if(is.list(image)){
+		
+
+		if(is.null(mask)){
+			mask = rep(1,length(image$intensity))
+		}else {
+			center = image$center
+			new.r.obs = image$r.obs[mask==1]
+			new.theta.obs = image$theta.obs[mask==1]
+			new.intensity = image$intensity[mask==1]
+			image = list(r.obs=new.r.obs, theta.obs = new.theta.obs, intensity=new.intensity, center=center)
+		}
+
+		if(is.null(inimean)){
+			ini.mean.estimator = function(r){
+				obs.in = image$intensity[which(image$r.obs<r)]
+				obs.out = image$intensity[which(image$r.obs>=r)]
+				p.in=mean(obs.in)
+				p.out=mean(obs.out)
+				log_lhood = sum(obs.in)*p.in+sum(1-obs.in)*(1-p.in)+sum(obs.out)*p.out+sum(1-obs.out)*(1-p.out)
+				if(any(ordering=="I" & p.in>p.out,ordering=="O" & p.in<p.out,ordering=="N")){
+					return(log_lhood)
+				}else {
+					return(-Inf)
+				}
+			}
+			eval_seq = seq(from = min(image$r.obs)+0.02, to = min(0.5,max(image$r.obs))-0.02, by=0.01 )
+			len=length(eval_seq)
+			evals=rep(0,len)
+			for(i in 1:len){evals[i]=ini.mean.estimator(eval_seq[i])}
+			inimean = eval_seq[which.max(evals)] 
+		}
+		output = BayesBDbinary(image, inimean, nrun, nburn, J, ordering, slice, outputAll, eigenfun, besselIs, unisliceL)
+		return(list(image = image, center = center, gamma.fun = gamma.fun, output = output, obs = list(r.obs = as.vector(image$r.obs),theta.obs = as.vector(image$theta.obs),intensity = as.vector(image$intensity))))
+	}else {
+		return("Input image is not a compatible image file nor a compatible list object.")
+	}
+}
+
+
+fitContImage = function(image, gamma.fun = NULL, center = NULL, inimean=NULL, nrun, nburn, J, ordering_mu, ordering_sigma, mask = NULL, slice, outputAll, eigenfun, besselIs){
+
+	if(!is.list(image)){
+		img=image		
+		if(length(dim(img))>2){
+			img = matrix(img[,,1],dim(img)[1],dim(img)[2])
+		}else {
+			img = img
+		}
+
+		n1 = nrow(img)
+		n2 = ncol(img)
+
+		img_flip = img
+	
+		for(i in 1:n1){
+			for(j in 1:n2){
+				img_flip[i,j] = img[n1-i+1,j]
+			}
+		}
+
+		img = img_flip
+
+		if(any(center[1]>n2,center[2]>n1,center[1]<0,center[2]<0)){
+			return(paste('The center should be a pixel (x,y) between 0 and ', ncol(img), 'for x, and 0 and ', nrow(img), ' for y.'))
+		}
+
+		r.obs = img
+		theta.obs = img
+		intensity = img
+		for(i in 1:n1){
+			for(j in 1:n2){
+				r.obs[i,j] = sqrt(((i - center[2])/n1)^2 + ((j - center[1])/n2)^2)
+				theta.obs[i,j] = atan2((i - center[2])/n1, (j - center[1])/n2)
+				theta.obs[theta.obs < 0] = theta.obs[theta.obs < 0] + 2*pi
+			}
+		}
+
+		r.obs = as.vector(r.obs)
+		theta.obs = as.vector(theta.obs)
+		intensity = as.vector(intensity)
+		intensity = 200*intensity	
+	
+		obs = list(r.obs = r.obs, theta.obs = theta.obs, intensity = intensity, center=center)
+
+		if(is.null(mask)){
+			mask = rep(1,length(obs$intensity))
+		}else {
+			center = obs$center
+			new.r.obs = obs$r.obs[mask==1]
+			new.theta.obs = obs$theta.obs[mask==1]
+			new.intensity = obs$intensity[mask==1]
+			obs = list(r.obs=new.r.obs, theta.obs = new.theta.obs, intensity=new.intensity, center=center)
+		}
+
+		if(is.null(inimean)){
+			ini.mean.estimator = function(r){
+				obs.in = obs$intensity[which(obs$r.obs<r)]
+				obs.out = obs$intensity[which(obs$r.obs>=r)]
+				mu.in = mean(obs.in)
+				mu.out = mean(obs.out)
+				sd.in = sd(obs.in)
+				sd.out = sd(obs.out)
+				log_lhood = sum(pnorm(obs.in, mu.in, sd.in, log.p=TRUE))+sum(pnorm(obs.out, mu.out, sd.out, log.p=TRUE))
+				if(any(ordering_mu=='I' & mu.in>mu.out & ordering_sigma=='I' & sd.in>sd.out, 
+					ordering_mu=='I' & mu.in>mu.out & ordering_sigma=='O' & sd.in<sd.out,
+					ordering_mu=='O' & mu.in<mu.out & ordering_sigma=='I' & sd.in>sd.out,
+					ordering_mu=='O' & mu.in<mu.out & ordering_sigma=='O' & sd.in<sd.out,
+					ordering_mu=='I' & mu.in>mu.out & ordering_sigma=='N',
+					ordering_mu=='O' & mu.in<mu.out & ordering_sigma=='N',
+					ordering_mu=='N' & ordering_sigma=='O' & sd.in<sd.out,
+					ordering_mu=='N' & ordering_sigma=='I' & sd.in>sd.out,
+					ordering_mu=='N' & ordering_sigma=='N')){
+				
+					return(log_lhood)
+
+				}else{
+					return(-Inf)
+				}
+			}
+
+			eval_seq = seq(from=min(obs$r.obs)+0.02,to=min(0.5,max(obs$r.obs))-0.02, by=0.01)
+			len=length(eval_seq)
+			evals = rep(0,len)
+			for(i in 1:len){evals[i]=ini.mean.estimator(eval_seq[i])}
+			inimean = eval_seq[which.max(evals)]
+		}
+
+		output = BayesBDnormal(obs, inimean, nrun, nburn, J,  ordering_mu, ordering_sigma, slice, outputAll, eigenfun, besselIs)
+
+		return(list(image = image, center = center, gamma.fun = gamma.fun, output = output, obs = obs))
+
+	}else if(is.list(image)){
+
+		if(is.null(mask)){
+			mask = rep(1,length(image$intensity))
+		}else {
+			center = image$center
+			new.r.obs = image$r.obs[mask==1]
+			new.theta.obs = image$theta.obs[mask==1]
+			new.intensity = image$intensity[mask==1]
+			image = list(r.obs=new.r.obs, theta.obs = new.theta.obs, intensity=new.intensity, center=center)
+		}
+
+		if(is.null(inimean)){
+			ini.mean.estimator = function(r){
+				obs.in = image$intensity[which(image$r.obs<r)]
+				obs.out = image$intensity[which(image$r.obs>=r)]
+				mu.in = mean(obs.in)
+				mu.out = mean(obs.out)
+				sd.in = sd(obs.in)
+				sd.out = sd(obs.out)
+				log_lhood = sum(pnorm(obs.in, mu.in, sd.in, log.p=TRUE))+sum(pnorm(obs.out, mu.out, sd.out, log.p=TRUE))
+				if(any(ordering_mu=='I' & mu.in>mu.out & ordering_sigma=='I' & sd.in>sd.out, 
+					ordering_mu=='I' & mu.in>mu.out & ordering_sigma=='O' & sd.in<sd.out,
+					ordering_mu=='O' & mu.in<mu.out & ordering_sigma=='I' & sd.in>sd.out,
+					ordering_mu=='O' & mu.in<mu.out & ordering_sigma=='O' & sd.in<sd.out,
+					ordering_mu=='I' & mu.in>mu.out & ordering_sigma=='N',
+					ordering_mu=='O' & mu.in<mu.out & ordering_sigma=='N',
+					ordering_mu=='N' & ordering_sigma=='O' & sd.in<sd.out,
+					ordering_mu=='N' & ordering_sigma=='I' & sd.in>sd.out,
+					ordering_mu=='N' & ordering_sigma=='N')){
+				
+					return(log_lhood)
+
+				}else{
+					return(-Inf)
+				}
+			}
+
+			eval_seq = seq(from=min(image$r.obs)+0.02,to=min(0.5,max(image$r.obs))-0.02, by=0.01)
+			len=length(eval_seq)
+			evals = rep(0,len)
+			for(i in 1:len){evals[i]=ini.mean.estimator(eval_seq[i])}
+			inimean = eval_seq[which.max(evals)]
+		}
+
+		output = BayesBDnormal(image, inimean, nrun, nburn, J,  ordering_mu, ordering_sigma, slice, outputAll, eigenfun, besselIs)
+		
+		return(list(image = image, center = center, gamma.fun = gamma.fun, output = output, obs = list(r.obs=as.vector(image$r.obs), theta.obs=as.vector(image$theta.obs), intensity=as.vector(image$intensity))))
+
+	}else {
+		return("Input image is not a compatible image file nor a compatible list object.")
+	}
+}
+
+
+plotBD =
+function (fitted.image, plot.type) 
+{
+	if(!is.list(fitted.image$image)){
+		img = fitted.image$image
+		center=fitted.image$center
+		if(length(dim(img))>2){
+			img = matrix(img[,,1],dim(img)[1],dim(img)[2])
+		}else {
+			img = img
+		}
+
+		n1 = nrow(img)
+		n2 = ncol(img)
+
+		img_flip = img
+	
+		for(i in 1:n1){
+			for(j in 1:n2){
+				img_flip[i,j] = img[n1-i+1,j]
+			}
+		}
+
+		img = img_flip
+
+
+		if(any(center[1]>n2,center[2]>n1,center[1]<0,center[2]<0)){
+			return(paste('The center should be a pixel (x,y) between 0 and ', ncol(img), 'for x, and 0 and ', nrow(img), ' for y.'))
+		}
+
+		y1 = 1:n1
+		x1 = 1:n2
+		y=NULL
+		x=NULL	
+		for(i in 1:n2){
+			y = c(y,y1)
+			x = c(x,rep(i,n1))
+		}	
+
+		intensity = img
+		intensity = as.vector(intensity)
+
+		estimate.x = fitted.image$output$estimate*cos(fitted.image$output$theta)*n2+fitted.image$center[1]
+		estimate.y = fitted.image$output$estimate*sin(fitted.image$output$theta)*n1+fitted.image$center[2]
+		upper.x = fitted.image$output$upper*cos(fitted.image$output$theta)*n2+fitted.image$center[1]
+		upper.y = fitted.image$output$upper*sin(fitted.image$output$theta)*n1+fitted.image$center[2]
+		lower.x = fitted.image$output$lower*cos(fitted.image$output$theta)*n2+fitted.image$center[1]
+		lower.y = fitted.image$output$lower*sin(fitted.image$output$theta)*n1+fitted.image$center[2]
+
+		if(plot.type == 1){
+			if(min(intensity)<0){ 
+       				normalized = (intensity+abs(min(intensity)))/(max(intensity)-min(intensity))
+  			}else{
+       				normalized = (intensity-abs(min(intensity)))/(max(intensity)-min(intensity))
+    			}
+    			plot(x, y, col = gray(normalized), pch = 15, cex = 0.375, axes = FALSE, xlab = '', ylab = '',asp = 1)
+		}else if(plot.type == 2){
+    			plot(x, y, col = 'white', pch = 15, cex = 0.375, axes = FALSE, xlab = '', ylab = '',asp = 1)   			
+  			polygon(upper.x, upper.y, fillOddEven = TRUE, col = "gray", border = NA)
+   			polygon(lower.x, lower.y, fillOddEven = TRUE, col = "white", border = NA)
+   			lines(estimate.x, estimate.y, lty = 2, lwd = 3, col='blue')
+   			if (!is.null(fitted.image$gamma.fun)) {
+     				gamma.x = fitted.image$gamma.fun(fitted.image$output$theta) * cos(fitted.image$output$theta) + fitted.image$center[1]
+    				gamma.y = fitted.image$gamma.fun(fitted.image$output$theta) * sin(fitted.image$output$theta) + fitted.image$center[2]
+   				lines(gamma.x, gamma.y, lty = 1, lwd = 1)
+			}
+		}else if(plot.type == 3){
+			if(min(intensity)<0){ 
+       				normalized = (intensity+abs(min(intensity)))/(max(intensity)-min(intensity))
+  			}else{
+       				normalized = (intensity-abs(min(intensity)))/(max(intensity)-min(intensity))
+    			}
+    			plot(x, y, col = gray(normalized), pch = 15, cex = 0.375, axes = FALSE, xlab = '', ylab = '',asp = 1)
+   			lines(estimate.x, estimate.y, lty = 2, lwd = 3, col='blue')
+			if (!is.null(fitted.image$gamma.fun)) {
+     				gamma.x = fitted.image$gamma.fun(fitted.image$output$theta) * cos(fitted.image$output$theta) + fitted.image$center[1]
+    				gamma.y = fitted.image$gamma.fun(fitted.image$output$theta) * sin(fitted.image$output$theta) + fitted.image$center[2]
+   				lines(gamma.x, gamma.y, lty = 1, lwd = 1)
+			}
+		}else {
+			return("plot.type must be 1, 2, or 3.")
+		}
+	}else if(is.list(fitted.image$image)){
+
+		x = fitted.image$image$r.obs*cos(fitted.image$image$theta.obs)+fitted.image$image$center[1]
+		y = fitted.image$image$r.obs*sin(fitted.image$image$theta.obs)+fitted.image$image$center[2]
+		estimate.x = fitted.image$output$estimate*cos(fitted.image$output$theta)+fitted.image$image$center[1]
+		estimate.y = fitted.image$output$estimate*sin(fitted.image$output$theta)+fitted.image$image$center[2]
+		upper.x = fitted.image$output$upper*cos(fitted.image$output$theta)+fitted.image$image$center[1]
+		upper.y = fitted.image$output$upper*sin(fitted.image$output$theta)+fitted.image$image$center[2]
+		lower.x = fitted.image$output$lower*cos(fitted.image$output$theta)+fitted.image$image$center[1]
+		lower.y = fitted.image$output$lower*sin(fitted.image$output$theta)+fitted.image$image$center[2]
+
+		if(plot.type == 1){
+
+    			if(min(fitted.image$image$intensity)<0){ 
+       				normalized = (fitted.image$image$intensity+abs(min(fitted.image$image$intensity)))/(max(fitted.image$image$intensity)-min(fitted.image$image$intensity))
+    			}else{
+      				normalized = (fitted.image$image$intensity-abs(min(fitted.image$image$intensity)))/(max(fitted.image$image$intensity)-min(fitted.image$image$intensity))
+   			}
+   			plot(x, y, col = gray(normalized), pch = 15, cex = 0.375, axes = FALSE, xlab = '', ylab = '',asp = 1)
+
+		}else if(plot.type == 2){
+  			plot(x, y, col = 'white', axes = FALSE, xlab = '', ylab = '',asp = 1)   			
+  			polygon(upper.x, upper.y, fillOddEven = TRUE, col = "gray", border = NA)
+   			polygon(lower.x, lower.y, fillOddEven = TRUE, col = "white", border = NA)
+   			lines(estimate.x, estimate.y, lty = 2, lwd = 3, col='blue')
+   			if (!is.null(fitted.image$gamma.fun)) {
+     				gamma.x = fitted.image$gamma.fun(fitted.image$output$theta) * cos(fitted.image$output$theta) + fitted.image$image$center[1]
+    				gamma.y = fitted.image$gamma.fun(fitted.image$output$theta) * sin(fitted.image$output$theta) + fitted.image$image$center[2]
+   				lines(gamma.x, gamma.y, lty = 1, lwd = 1)
+			}
+			
+		}else if(plot.type == 3){
+    			if(min(fitted.image$image$intensity)<0){ 
+       				normalized = (fitted.image$image$intensity+abs(min(fitted.image$image$intensity)))/(max(fitted.image$image$intensity)-min(fitted.image$image$intensity))
+    			}else{
+      				normalized = (fitted.image$image$intensity-abs(min(fitted.image$image$intensity)))/(max(fitted.image$image$intensity)-min(fitted.image$image$intensity))
+   			}
+    			plot(x, y, col = gray(normalized), pch = 15, cex = 0.375, axes = FALSE, xlab = '', ylab = '',asp = 1)
+   			lines(estimate.x, estimate.y, lty = 2, lwd = 3, col = 'blue')
+			if (!is.null(fitted.image$gamma.fun)) {
+     				gamma.x = fitted.image$gamma.fun(fitted.image$output$theta) * cos(fitted.image$output$theta) + fitted.image$image$center[1]
+    				gamma.y = fitted.image$gamma.fun(fitted.image$output$theta) * sin(fitted.image$output$theta) + fitted.image$image$center[2]
+   				lines(gamma.x, gamma.y, lty = 1, lwd = 1)
+			}
+		}else {
+			return("plot.type must be 1, 2, or 3.")
+		}
+
+	}else {
+		return("Input image is not a compatible image file nor a compatible list object.")
+	}
+}
+
+
+
+
+
+
+##############
+# Shiny stuff
+##############
+
 library(shiny)
 
-    ui = pageWithSidebar(
+BayesBDshiny = function(){
+ui = pageWithSidebar(
 	titlePanel("BayesBD"),
       sidebarPanel(selectInput(inputId = "shape", label = "Choose either an elliptical, triangular, or user-supplied boundary, or indicate that the ground truth is unknown.", 
-        choices = c("ellipse", "triangle", "file", "unknown")), 
-        fileInput(inputId = "shape_file", label = "Use a custom boundary. The file should be an R script of a function called taking\n\t\t as input an angle in [0, 2pi] and returning the radius of the boundary from a reference point."), 
-        selectInput(inputId = "data_type", label = "Choose to simulate binary or Gaussian data or input data file below.", 
-            choices = c("binary sim", "normal sim", "user binary data", 
-                "user normal data")), fileInput(inputId = "data_file", 
-            label = "Use image data from file for analysis. The file should be in csv format with no headers. The first column is for intensity, the second gives the radius from the origin, and the third gives the angle from the origin and positive x-axis, and the fourth column gives the subset of data to be analyzed, 1 to include the data point, and 0 to exclude it."), 
+        choices = c("ellipse", "triangle", "file", "unknown")),
+	conditionalPanel( 
+	condition = "input.shape == 'file'",
+        fileInput(inputId = "shape_file", label = "Use a custom boundary. The file should be an R script of a function called gamma.fun taking as input an angle in [0, 2pi] and returning the radius of the boundary from a reference point.")), 
+        selectInput(inputId = "data_type", label = "Choose to simulate binary or Gaussian data or input image file below.", 
+            choices = c("binary sim", "normal sim", "user binary image", 
+                "user continuous image")),
+	conditionalPanel( 
+	condition = "input.data_type == 'user binary image' || input.data_type == 'user continuous image'", 
+	fileInput(inputId = "data_file",label="Use image from file. The file should be in .png or .jpeg format.", multiple = FALSE, accept = NULL, width = NULL),
+	selectInput(inputId = "pic_type", label = "Is the image a .jpeg or a .png?", 
+            choices = c(".jpeg", ".png")),
+	actionButton(inputId = "go_plot", label = "Display Image")), 
 	numericInput(inputId = "centerx", label = "Input the X-coordinate and Y-coordinate of the reference point interior to the boundary function.", 
             value = 0.5, min = NA, max = NA, step = NA, width = NULL), 
         numericInput(inputId = "centery", label = "Y-coordinate of the reference point.", 
             value = 0.5, min = NA, max = NA, step = NA, width = NULL), 
+	conditionalPanel( 
+	condition = "input.data_type == 'user binary image' || input.data_type == 'user continuous image'", 
+        selectInput(inputId = "pre_fit", label = "Choose if you would like to fit the boundary twice to filter the background.", 
+            choices = c("No", "Yes"))), 	
         sliderInput(inputId = "n_burn", label = "Choose a number of posterior samples to burn", 
             value = 1000, min = 500, max = 1000), sliderInput(inputId = "n_run", 
             label = "Choose a number of posterior samples to keep", 
-            value = 1000, min = 500, max = 2000), "Use the following inputs for Binary simulations", 
+            value = 2000, min = 1000, max = 4000), 
+	conditionalPanel( 
+	condition = "input.data_type == 'binary sim'",  
         sliderInput(inputId = "p_in", label = "Choose the Bernoulli success probability inside the image", 
             value = 0.5, min = 0, max = 1), sliderInput(inputId = "p_out", 
             label = "Choose the Bernoulli success probability outside the image", 
-            value = 0.2, min = 0, max = 1),
+            value = 0.2, min = 0, max = 1)),
+	conditionalPanel( 
+	condition = "input.data_type == 'binary sim' || input.data_type == 'user binary image'",
         selectInput(inputId = "ordering", label = "Indicate which region of the image has higher average intensity.", 
-            choices = c("Inside", "Outside", "Unknown")),
-"Use the following inputs for Gaussian simulations", 
+            choices = c("Inside", "Outside", "Unknown"))),
+	conditionalPanel( 
+	condition = "input.data_type == 'normal sim'",
         numericInput(inputId = "mu_in", label = "Mean intensity inside image", 
             value = 1, min = NA, max = NA, step = NA, width = NULL), 
         numericInput(inputId = "sd_in", label = "Standard deviation inside image", 
@@ -1271,18 +1698,48 @@ library(shiny)
         numericInput(inputId = "mu_out", label = "Mean intensity outside image", 
             value = 0, min = NA, max = NA, step = NA, width = NULL), 
         numericInput(inputId = "sd_out", label = "Standard deviation outside image", 
-            value = 1, min = 0, max = NA, step = NA, width = NULL), 
+            value = 1, min = 0, max = NA, step = NA, width = NULL)), 
+	conditionalPanel( 
+	condition = "input.data_type == 'normal sim' || input.data_type == 'user continuous image'",
         selectInput(inputId = "ordering_mu", label = "Indicate which region of the image has higher average intensity.", 
             choices = c("Inside", "Outside", "Unknown")),
         selectInput(inputId = "ordering_sd", label = "Indicate which region of the image has higher variation in intensity.", 
-            choices = c("Inside", "Outside", "Unknown")),
+            choices = c("Inside", "Outside", "Unknown"))),
         downloadButton('downloadData', 'Download'),
-        actionButton(inputId = "go", label = "Update")), mainPanel( plotOutput("image")))
+        actionButton(inputId = "go", label = "Update")), 
+	mainPanel( 
+	 	verbatimTextOutput("info"),
+		par(mfrow=c(1,2)),
+		plotOutput("image1", click = "plot_click"),
+		plotOutput("image")
+	)
+  		
+			
+	)
     
 
-     server = function(input, output) {
+
+
+  server = function(input, output) {
         theta.plot = seq(from = 0, to = 2 * pi, length.out = 200)
-        rotate <- function(x) t(apply(x, 2, rev))
+        pre_plot = eventReactive(input$go_plot, {
+		image = input$data_file
+		p_type = input$pic_type
+		if(any(p_type == '.jpeg',p_type == '.jpg')){
+			read_image = readJPEG(image$datapath)	
+		}else {
+			read_image = readPNG(image$datapath)	
+		}
+		cppsamp = fitContImage(read_image, NULL, c(0,0), NULL, 1, 
+                  0, 10,'I','I',NULL, FALSE, FALSE, eigenfun, besselIs)
+		return(cppsamp)
+	})
+	output$image1 <- renderPlot({
+    		plotBD(pre_plot(),1)
+ 	 })
+	output$info <- renderText({
+    		if(input$data_type == 'user binary image' || input$data_type == 'user continuous image'){paste0("x=", input$plot_click$x, "\ny=", input$plot_click$y)}
+  	})
         data = eventReactive(input$go, {
             center = c(input$centerx, input$centery)
             if (input$shape == "ellipse") {
@@ -1295,65 +1752,37 @@ library(shiny)
                 gamma.fun = source(input$shape_file$datapath)$value
             }
             else {
-                gamma.fun = FALSE
+                gamma.fun = NULL
             }
             if (input$data_type == "binary sim") {
-                obs = par2obs(m = 100, pi.in = input$p_in, pi.out = input$p_out, 
+                image = par2obs(m = 100, pi.in = input$p_in, pi.out = input$p_out, 
                   design = "J", center, gamma.fun)
             }
             else if (input$data_type == "normal sim") {
-                obs = parnormobs(m = 100, mu.in = input$mu_in, 
+                image = parnormobs(m = 100, mu.in = input$mu_in, 
                   mu.out = input$mu_out, sd.in = input$sd_in, 
                   sd.out = input$sd_out, design = "J", center, 
                   gamma.fun)
             }
             else {
-                obs.list = read.csv(input$data_file$datapath, header=FALSE)
-                obs = list()
-                obs$intensity = matrix(obs.list[, 1], length(obs.list[, 
-                  1]), 1)
-                obs$r.obs = matrix(obs.list[, 2], length(obs.list[, 
-                  2]), 1)
-                obs$theta.obs = matrix(obs.list[, 3], length(obs.list[, 
-                  3]), 1)
-                obs$center = center
-		obs$sub = matrix(obs.list[, 4], length(obs.list[, 
-                  4]), 1)
+                image = input$data_file
             }
             if (any(input$data_type == "binary sim", input$data_type == 
-                "user binary data")) {
-		d_obs = obs
-		d_obs$sub = as.vector(d_obs$sub)
-		d_obs$intensity = as.vector(d_obs$intensity)
-		d_obs$r.obs = as.vector(d_obs$r.obs)
-		d_obs$theta.obs = as.vector(d_obs$theta.obs)
-		d_obs$intensity = d_obs$intensity[d_obs$sub==1]
-		d_obs$r.obs = d_obs$r.obs[d_obs$sub==1]
-		d_obs$theta.obs = d_obs$theta.obs[d_obs$sub==1]
-		if(input$ordering=="Inside"){
-			ordero = "I"
-		}else if(input$ordering == "Outside"){
-			ordero = "O"
-		}else{
-			ordero = "N"
-		}
-		if(input$data_type == "user binary data"){
-			use_obs = d_obs
-		}else{
-			use_obs = obs
-		}
-                cppsamp = BayesBDbinary(use_obs, 0.1, input$n_run, 
-                  input$n_burn, 10,ordero, FALSE, FALSE, besselIs, eigenfun, unisliceL)
+                "user binary image")) {
+		if(input$ordering == 'Inside'){ordero = 'I'
+		}else if(input$ordering == 'Outside'){ordero = 'O'
+		}else {ordero = 'N'}
+		if(input$data_type == "user binary image"){
+		p_type = input$pic_type
+		if(any(p_type == '.jpeg',p_type == '.jpg')){
+			image = readJPEG(input$data_file$datapath)	
+		}else {
+			image = readPNG(input$data_file$datapath)	
+		}}
+                cppsamp1 = fitBinImage(image=image, gamma.fun=gamma.fun, center = center,NULL, nrun=input$n_run, 
+                  nburn=input$n_burn, J=10,ordering=ordero,mask=NULL, slice=FALSE, outputAll=FALSE, eigenfun, besselIs, unisliceL)
             }
             else {
-		d_obs = obs
-		d_obs$sub = as.vector(d_obs$sub)
-		d_obs$intensity = as.vector(d_obs$intensity)
-		d_obs$r.obs = as.vector(d_obs$r.obs)
-		d_obs$theta.obs = as.vector(d_obs$theta.obs)
-		d_obs$intensity = d_obs$intensity[d_obs$sub==1]
-		d_obs$r.obs = d_obs$r.obs[d_obs$sub==1]
-		d_obs$theta.obs = d_obs$theta.obs[d_obs$sub==1]
 		if(input$ordering_mu=="Inside"){
 			order_mu = "I"
 		}else if(input$ordering_mu == "Outside"){
@@ -1368,91 +1797,100 @@ library(shiny)
 		}else{
 			order_sd = "N"
 		}
-		if(input$data_type == "user binary data"){
-			use_obs = d_obs
-		}else{
-			use_obs = obs
-		}     
-            cppsamp = BayesBDnormal(use_obs, 0.1, input$n_run, 
-                  input$n_burn, 10,order_mu,order_sd, FALSE, FALSE, besselIs, eigenfun)
+		if(input$data_type == "user continuous image"){    
+		p_type = input$pic_type
+		if(any(p_type == '.jpeg',p_type == '.jpg')){
+			image = readJPEG(input$data_file$datapath)	
+		}else {
+			image = readPNG(input$data_file$datapath)	
+		}}
+            cppsamp1 = fitContImage(image=image, gamma.fun=gamma.fun, center=center,NULL, nrun=input$n_run, 
+                  nburn=input$n_burn, J=10,ordering_mu=order_mu,ordering_sigma=order_sd,mask=NULL, slice=FALSE, outputAll=FALSE, eigenfun, besselIs)
             }
-            x = cppsamp$estimate * cos(cppsamp$theta) + obs$center[1]
-            y = cppsamp$estimate * sin(cppsamp$theta) + obs$center[2]
-            lx = cppsamp$lower * cos(cppsamp$theta) + obs$center[1]
-            ly = cppsamp$lower * sin(cppsamp$theta) + obs$center[2]
-            ux = cppsamp$upper * cos(cppsamp$theta) + obs$center[1]
-            uy = cppsamp$upper * sin(cppsamp$theta) + obs$center[2]
-	    ru = sqrt((ux-center[1])^2 + (uy-center[2])^2)
-	    r.est = function(theta){
-		thetas = c(theta.plot,2*pi)
-		r.thetas = c(ru,ru[1])
-		s = sort(c(theta,thetas))
-		w = which(s==theta)
-		lt = s[w-1]
-		ut = s[w+1]
-		lr = r.thetas[w-1]
-		ur = r.thetas[w]
-		r_est = ((theta - lt)/(ut-lt))*ur+((ut - theta)/(ut-lt))*lr
-		return(r_est[1])
-	    }
-	    app.r.est = function(theta) apply(matrix(theta,length(theta),1),1,r.est)
-            r_ests = app.r.est(obs$theta.obs)
-            r_ests = matrix(r_ests,length(r_ests),1)
-            subset = ifelse(as.vector(obs$r.obs)<=r_ests,1,0)
-            return(list(obs = obs, x = x, y = y, lx = lx, ly = ly, 
-                ux = ux, uy = uy, gamma.fun = gamma.fun, shape = input$shape, subset = subset))
+
+		theta.plot = seq(from = 0, to = 2*pi, length.out = 200)
+
+		r.est = function(theta){
+			thetas = c(theta.plot,2*pi)
+			r.thetas = c(cppsamp1$output$upper,cppsamp1$output$upper[1])
+			s = sort(c(theta,thetas))
+			w = max(which(s==theta))
+			lt = s[w-1]
+			ut = s[w+1]
+			lr = r.thetas[w-1]
+			ur = r.thetas[w]
+			r_est = ((theta - lt)/(ut-lt))*ur+((ut - theta)/(ut-lt))*lr
+			return(r_est[1])
+		}
+
+		app.r.est = function(theta) apply(matrix(theta,length(theta),1),1,r.est)
+
+		r_ests = app.r.est(cppsamp1$obs$theta.obs)
+		r_ests = matrix(r_ests,length(cppsamp1$obs$theta.obs),1)
+		subset = ifelse(cppsamp1$obs$r.obs<=r_ests,1,0)
+
+	    if(input$pre_fit == 'Yes'){
+		if(input$data_type == "user continuous image"){    
+		p_type = input$pic_type
+		if(any(p_type == '.jpeg',p_type == '.jpg')){
+			image = readJPEG(input$data_file$datapath)	
+		}else {
+			image = readPNG(input$data_file$datapath)	
+		}}
+		if(input$data_type == "user binary image"){
+		p_type = input$pic_type
+		if(any(p_type == '.jpeg',p_type == '.jpg')){
+			image = readJPEG(input$data_file$datapath)	
+		}else {
+			image = readPNG(input$data_file$datapath)	
+		}}
+
+			if (any(input$data_type == "binary sim", input$data_type == "user binary image")) {
+				cppsamp2 = fitBinImage(image=image, gamma.fun=gamma.fun, center = center,NULL, nrun=input$n_run, 
+                  				nburn=input$n_burn, J=10,ordering='N',mask=subset, slice=FALSE, outputAll=FALSE, eigenfun, besselIs, unisliceL)							
+			}else {
+				cppsamp2 = fitContImage(image=image, gamma.fun=gamma.fun, center=center,NULL, nrun=input$n_run, 
+                 			 nburn=input$n_burn, J=10,ordering_mu='N',ordering_sigma='N',mask=subset, slice=FALSE, outputAll=FALSE, eigenfun, besselIs)
+			}
+		r_ests2 = app.r.est(cppsamp2$obs$theta.obs)
+		r_ests2 = matrix(r_ests2,length(cppsamp2$obs$theta.obs),1)
+		subset2 = ifelse(cppsamp2$obs$r.obs<=r_ests2,1,0)
+		return(list(cppsamp1=cppsamp1,cppsamp2=cppsamp2,subset=subset,subset2=subset2))
+	    }else {
+		return(list(cppsamp1=cppsamp1,subset=subset))	
+		}
+
+
         })
         output$image = renderPlot({
             d = data()
-            par(mfrow = c(1, 2), mar = c(3, 2, 2, 2))
-  xobs = d$obs$r.obs*cos(d$obs$theta.obs)+d$obs$center[1]
-    yobs = d$obs$r.obs*sin(d$obs$theta.obs)+d$obs$center[2]
-    if(min(d$obs$intensity)<0){ 
-       normalized = (d$obs$intensity+abs(min(d$obs$intensity)))/(max(d$obs$intensity)-min(d$obs$intensity))
-    }else{
-       normalized = (d$obs$intensity-abs(min(d$obs$intensity)))/(max(d$obs$intensity)-min(d$obs$intensity))
-    }
-    plot(xobs, yobs, col = gray(normalized), pch = 15, cex = 0.375, axes = FALSE, xlab = '', ylab = '',asp = 1)
-            if (d$shape != "unknown") {
-		image(matrix(0,100,100),asp = 1, axes=FALSE,col = 'white')    
-		x = d$obs$gamma.fun(theta.plot)*cos(theta.plot)+d$obs$center[1]
-		y = d$obs$gamma.fun(theta.plot)*sin(theta.plot)+d$obs$center[2]
-		max_x = max(d$obs$r.obs*cos(d$obs$theta.obs)+d$obs$center[1])
-		min_x = min(d$obs$r.obs*cos(d$obs$theta.obs)+d$obs$center[1])
-		max_y = max(d$obs$r.obs*sin(d$obs$theta.obs)+d$obs$center[2])
-		min_y = min(d$obs$r.obs*sin(d$obs$theta.obs)+d$obs$center[2])
-		polygon(c(max_x+1, max_x+1, min_x-1, min_x-1), c(max_y+1, min_y-1, min_y-1, max_y+1), fillOddEven = TRUE, col = "white", border = NA)
-		lines(x,y, lty = 1, lwd = 1)
-            }
-            else {
-	image(matrix(0,100,100),asp = 1, axes=FALSE,col = 'white')    
-		max_x = max(d$obs$r.obs*cos(d$obs$theta.obs)+d$obs$center[1])
-		min_x = min(d$obs$r.obs*cos(d$obs$theta.obs)+d$obs$center[1])
-		max_y = max(d$obs$r.obs*sin(d$obs$theta.obs)+d$obs$center[2])
-		min_y = min(d$obs$r.obs*sin(d$obs$theta.obs)+d$obs$center[2])
-		polygon(c(max_x+1, max_x+1, min_x-1, min_x-1), c(max_y+1, min_y-1, min_y-1, max_y+1), fillOddEven = TRUE, col = "white", border = NA)
-	            lines(d$x, d$y, lty = 2, lwd = 3)
-            }
-            polygon(d$ux, d$uy, fillOddEven = TRUE, col = "gray", 
-                border = NA)
-            polygon(d$lx, d$ly, fillOddEven = TRUE, col = "white", 
-                border = NA)
-	    lines(d$x, d$y, lty = 2, lwd = 3)
-            if (d$shape != "unknown") {
-		lines(x, y, lty = 1, lwd = 1)
-                lines(d$x, d$y, lty = 2, lwd = 3)
-            }
+           if(input$pre_fit=='Yes'){
+
+			par(mfrow = c(1,2))
+			plotBD(d$cppsamp1,3)
+			plotBD(d$cppsamp2,3)
+
+		}else {
+
+			plotBD(d$cppsamp1,3)
+		
+		}
         })
-	output$downloadData <- downloadHandler(
-    filename = function() { 'image_data.csv' },
+output$downloadData <- downloadHandler(
+    filename = function() { 'image_data.txt' },
     content = function(file) {
-      write.csv(data()$subset, file)
+	d=data()
+    if(input$pre_fit == 'Yes'){
+	out = cbind(as.vector(d$cppsamp1$obs$r.obs), as.vector(d$cppsamp1$obs$theta.obs), as.vector(d$cppsamp1$obs$intensity), as.vector(d$cppsamp1$subset),as.vector( d$cppsamp1$subset2))
+    }else {
+	out = cbind(as.vector(d$cppsamp1$obs$r.obs), as.vector(d$cppsamp1$obs$theta.obs), as.vector(d$cppsamp1$obs$intensity), as.vector(d$cppsamp1$subset))
+    }
+      write.table(out, file)
     }
   )
- 
-}
-
-shinyApp(ui = ui, server = server)
+    }
 
 
+return(shinyApp(ui = ui, server = server))}
 
+BayesBDshiny()
