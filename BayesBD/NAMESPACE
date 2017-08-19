@@ -1,4 +1,4 @@
-useDynLib(BayesBD)
+useDynLib(BayesBD, .registration=TRUE)
 importFrom(Rcpp, evalCpp)
 import(shiny)
 importFrom("mritc", "measureMRI")
@@ -8,4 +8,6 @@ importFrom("graphics", "image", "lines", "par", "plot", "polygon")
 importFrom("stats", "rbinom", "rnorm", "runif", "integrate", "pnorm", "sd")
 importFrom("utils", "read.table", "read.csv", "write.csv", "write.table")
 importFrom("grDevices", "gray")
-exportPattern("^[[:alpha:]]+")
+export("BayesBDshiny", "dsmError", "ellipse", "fitBinImage", "fitContImage", "hausdorffError", "lebesgueError", 
+"par2obs", "parnormobs", "plotBD", "rectToPolar", "triangle2", "BayesBDbinary",
+ "BayesBDnormal", "unisliceL", "eigenfun", "besselIs")
